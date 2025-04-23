@@ -216,6 +216,8 @@ void test(symbol_table &symbol_table, ifstream &inputfile, streambuf *terminal, 
         int collision_count = symbol_table.get_collision_count();
         report_file << "Hash Function ID: " << symbol_table.get_hash_id() << endl;
         report_file << "Total number of collisions: " << collision_count << endl;
+        report_file << "Bucket Size: " << symbol_table.get_bucket_size() << endl;
+        report_file << "Ration: " << (float)collision_count / symbol_table.get_bucket_size() << endl;
         report_file << "--------------------------------------" << endl;
     }
 

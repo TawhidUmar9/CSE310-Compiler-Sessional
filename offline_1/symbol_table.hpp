@@ -171,7 +171,8 @@ public:
         }
         return -1;
     }
-    int get_collision_count() const{
+    int get_collision_count() const
+    {
         int count = 0;
         scope_table *temp = current_scope_table;
         while (temp != nullptr)
@@ -183,6 +184,7 @@ public:
         return count;
     }
     int get_hash_id() const { return hash_id; };
+    int get_bucket_size() const { return bucket_size; };
 };
 
 #endif // SYMBOL_TABLE_HPP
