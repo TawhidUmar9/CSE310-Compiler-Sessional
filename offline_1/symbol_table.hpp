@@ -1,11 +1,8 @@
 #ifndef SYMBOL_TABLE_HPP
 #define SYMBOL_TABLE_HPP
-#define INITIAL_ID 1
 #define DEFAULT_BUCKET_SIZE 10
 
 #include "scope_table.hpp"
-
-int scope_table_count = INITIAL_ID;
 
 class symbol_table
 {
@@ -15,11 +12,12 @@ private:
     int bucket_size;
     int hash_id = 0;
     int collision_count = 0;
+    int scope_table_count = 0;
 
 public:
     symbol_table(int bucket_size = DEFAULT_BUCKET_SIZE, int hash_id = 0) : bucket_size(bucket_size)
     {
-        current_scope_table = new scope_table(bucket_size, scope_table_count++, nullptr, hash_id);
+        current_scope_table = new scope_table(bucket_size, ++scope_table_count, nullptr, hash_id);
         scope_table_list = current_scope_table;
         this->hash_id = hash_id;
     }
@@ -37,12 +35,12 @@ public:
     {
         if (current_scope_table == nullptr)
         {
-            current_scope_table = new scope_table(bucket_size, scope_table_count++, nullptr, hash_id);
+            current_scope_table = new scope_table(bucket_size, ++scope_table_count, nullptr, hash_id);
             scope_table_list = current_scope_table;
         }
         else
         {
-            scope_table *new_scope = new scope_table(bucket_size, scope_table_count++, current_scope_table, hash_id);
+            scope_table *new_scope = new scope_table(bucket_size, ++scope_table_count, current_scope_table, hash_id);
             current_scope_table = new_scope;
         }
         return true;

@@ -217,7 +217,11 @@ void test(symbol_table &symbol_table, ifstream &inputfile, streambuf *terminal, 
         report_file << "Hash Function ID: " << symbol_table.get_hash_id() << endl;
         report_file << "Total number of collisions: " << collision_count << endl;
         report_file << "Bucket Size: " << symbol_table.get_bucket_size() << endl;
-        report_file << "Ration: " << (float)collision_count / symbol_table.get_bucket_size() << endl;
+        report_file << "Total number of ScopeTables: " << symbol_table.get_scope_table_count() << endl;
+        int table_bucket_size = symbol_table.get_bucket_size();
+        int scope_table_count = symbol_table.get_scope_table_count();
+        int denominator = table_bucket_size * scope_table_count;
+        report_file << "Ration: " << (float)collision_count / denominator << endl;
         report_file << "--------------------------------------" << endl;
     }
 
@@ -346,6 +350,8 @@ int main(int argc, char *argv[])
 
             symbol_table symbol_table(bucket_size, i);
             test(symbol_table, inputfile, terminal, diff, line, report);
+            symbol_table.~symbol_table();
+            inputfile.close();
         }
         cout.rdbuf(terminal);
         cout << "Report generated in report.txt" << endl;
