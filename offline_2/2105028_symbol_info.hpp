@@ -28,7 +28,7 @@ public:
 
     void print() const
     {
-        std::cout << "<" << symbol_name << ",";
+        std::cout << "< " << symbol_name << " : ";
 
         std::string type_str = type.substr(0, type.find_first_of(' '));
         std::string params = type.substr(type.find_first_of(' ') + 1);
@@ -99,7 +99,7 @@ public:
         }
         else
         {
-            std::cout << type << "> ";
+            std::cout << type << " >";
         }
     }
 };

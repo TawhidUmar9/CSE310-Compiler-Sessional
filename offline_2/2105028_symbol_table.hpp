@@ -1,8 +1,9 @@
 #ifndef SYMBOL_TABLE_HPP
 #define SYMBOL_TABLE_HPP
+
 #define DEFAULT_BUCKET_SIZE 10
 
-#include "scope_table.hpp"
+#include "2105028_scope_table.hpp"
 
 class symbol_table
 {
@@ -11,8 +12,8 @@ private:
     scope_table *scope_table_list;
     int bucket_size;
     int hash_id = 0;
-    int collision_count = 0;
     int scope_table_count = 0;
+    int collision_count = 0;
 
 public:
     symbol_table(int bucket_size = DEFAULT_BUCKET_SIZE, int hash_id = 0) : bucket_size(bucket_size)
@@ -49,13 +50,13 @@ public:
     {
         if (current_scope_table == nullptr)
             return false;
-
+        if (get_current_scope_id() == 1)
+            return false;
         scope_table *temp = current_scope_table;
         current_scope_table = current_scope_table->get_parent_scope();
         int current_collision_count = temp->get_collision_count();
         delete temp;
         collision_count += current_collision_count;
-        // std::cout<<"collsion count"<<collision_count<<std::endl;
         return true;
     }
     bool insert(const std::string &name, const std::string &type)
@@ -63,7 +64,9 @@ public:
         if (current_scope_table == nullptr)
             return false;
         symbol_info *new_symbol = new symbol_info(name, type);
-        return current_scope_table->insert(new_symbol);
+        bool val = current_scope_table->insert(new_symbol);
+        print_all_scopes();
+        return val;
     }
     bool remove(const std::string &name)
     {
@@ -103,17 +106,14 @@ public:
     void print_all_scopes() const
     {
         scope_table *temp = current_scope_table;
-        int white_space_count = 1;
         while (temp != nullptr)
         {
             int id = temp->get_id();
-            for (int i = 0; i < white_space_count; i++)
-                std::cout << "	";
-            std::cout << "ScopeTable# " << id << std::endl;
-            temp->print_table(white_space_count);
+            std::cout << "ScopeTable # " << id << std::endl;
+            temp->print_table(0);
             temp = temp->get_parent_scope();
-            ++white_space_count;
         }
+        std::cout << std::endl;
     }
     // second is the index in the hash array.
     // first is the position in the linked list.

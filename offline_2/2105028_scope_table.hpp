@@ -1,8 +1,8 @@
 #ifndef SCOPE_TABLE_HPP
 #define SCOPE_TABLE_HPP
 
-#include "sdbm_hash.hpp"
-#include "symbol_info.hpp"
+#include "2105028_sdbm_hash.hpp"
+#include "2105028_symbol_info.hpp"
 #include <string>
 
 class scope_table
@@ -19,7 +19,6 @@ public:
     scope_table(int bucket_size, int id = 1, scope_table *parent = nullptr, int hash_id = 0)
         : id(id), bucket_size(bucket_size), parent_scope(parent), hash_id(hash_id)
     {
-        std::cout << "\tScopeTable# " << id << " created" << std::endl;
         table = new symbol_info *[bucket_size];
         for (int i = 0; i < bucket_size; ++i)
             table[i] = nullptr;
@@ -27,7 +26,6 @@ public:
 
     ~scope_table()
     {
-        std::cout << "	ScopeTable# " << id << " removed" << std::endl;
         for (int i = 0; i < bucket_size; i++)
         {
             symbol_info *current = table[i];
@@ -63,7 +61,6 @@ public:
         if (current_symbol == nullptr)
         {
             table[index] = symbol;
-            // print_table();
             return true;
         }
         else
@@ -73,9 +70,9 @@ public:
                 current_symbol = current_symbol->getNextSymbol();
             }
             current_symbol->setNextSymbol(symbol);
-            // print_table();
             return true;
         }
+
         return false;
     }
 
@@ -125,11 +122,10 @@ public:
         for (int i = 0; i < bucket_size;)
         {
             symbol_info *current_symbol = table[i];
-            for (int j = 0; j < white_space_count; j++)
-                std::cout << "	";
-            std::cout << ++i << "--> ";
+            
             if (current_symbol != nullptr)
             {
+                std::cout << i<< " --> ";
                 while (current_symbol != nullptr)
                 {
                     current_symbol->print();
@@ -137,8 +133,7 @@ public:
                 }
                 std::cout << std::endl;
             }
-            else
-                std::cout << std::endl;
+            i++;
         }
     }
 
