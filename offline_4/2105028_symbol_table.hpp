@@ -80,7 +80,7 @@ public:
 
         return current_scope_table->delete_symbol(name);
     }
-    symbol_info *lookup(const std::string &name)
+    symbol_info *lookup(const std::string &name) const
     {
         if (current_scope_table == nullptr)
             return nullptr;

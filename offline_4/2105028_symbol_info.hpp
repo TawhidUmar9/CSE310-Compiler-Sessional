@@ -149,14 +149,6 @@ public:
     {
         return parameter_list;
     }
-    std::string get_asm_name() const
-    {
-        return asm_name;
-    }
-    void set_asm_name(const std::string &asm_name)
-    {
-        this->asm_name = asm_name;
-    }
     int get_offset() const
     {
         return offset;
