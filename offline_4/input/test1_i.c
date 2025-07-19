@@ -1,38 +1,38 @@
-int i,j;
-int main(){
- 
-	int k,ll,m,n,o,p;
- 
-	i = 1;
-	println(i);	
-	
-	j = 5 + 8;
-	println(j);
-	
-	k = i + 2*j;
-	println(k);
+int i, j;
+int main()
+{
 
-	m = k%9;
-	println(m);
- 
+	int k, ll, m, n, o, p;
+
+	i = 1;
+	// println(i);
+
+	j = 5 + 8;
+	// println(j);
+
+	k = i + 2 * j;
+	// println(k);
+
+	m = k % 9;
+	// println(m);
+
 	n = m <= ll;
-	println(n);
- 
+	// println(n);
+
 	o = i != j;
-	println(o);
- 
+	// println(o);
+
 	p = n || o;
-	println(p);
- 
+	// println(p);
+
 	p = n && o;
-	println(p);
-	
+	// println(p);
+
 	p++;
-	println(p);
- 
+	// println(p);
+
 	k = -p;
-	println(k);
- 
+	// println(k);
+
 	return 0;
 }
-

@@ -13,6 +13,7 @@ using namespace std;
 ofstream parserLogFile; // global output stream
 ofstream errorFile;     // global error stream
 ofstream lexLogFile;    // global lexer log stream
+ofstream assemblyFile;
 
 int syntaxErrorCount;
 symbol_table st(7, 0);
@@ -20,6 +21,9 @@ std::string var_type = "";
 std::string return_type = "void";
 bool in_print = false;
 std::string data_type = "";
+bool code_segment_started = false;
+int current_local_offset = 0;
+int label_count = 0;
 
 int main(int argc, const char *argv[])
 {
@@ -46,6 +50,9 @@ int main(int argc, const char *argv[])
     system(("mkdir -p " + outputDirectory).c_str());
 
     // ---- Output Files ----
+    assemblyFile.open("code.asm");
+    assemblyFile << ".MODEL SMALL\n.STACK 100H\n.DATA\n";
+    assemblyFile << "\tCR EQU 0DH\n\tLF EQU 0AH\n";
     parserLogFile.open(parserLogFileName);
     if (!parserLogFile.is_open())
     {
@@ -78,12 +85,6 @@ int main(int argc, const char *argv[])
 
     // start parsing at the 'start' rule
     parser.start();
-
-    // clean up
-    inputFile.close();
-    parserLogFile.close();
-    errorFile.close();
-    lexLogFile.close();
     cout << "Parsing completed. Check the output files for details." << endl;
     return 0;
 }
