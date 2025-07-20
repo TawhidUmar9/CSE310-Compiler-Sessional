@@ -25,6 +25,9 @@ bool code_segment_started = false;
 int current_local_offset = 0;
 int label_count = 0;
 std::vector<int> label_stack; 
+std::stringstream code_buffer;
+bool buffer_mode = false;
+bool is_unreachable = false; 
 
 int main(int argc, const char *argv[])
 {

@@ -30,6 +30,9 @@ options
     extern int current_local_offset;
     extern int label_count;
     extern std::vector<int> label_stack;
+    extern std::stringstream code_buffer;
+    extern bool buffer_mode;
+    extern bool is_unreachable;
 }
 
 @parser::members
@@ -44,6 +47,21 @@ options
 
         parserLogFile << message << std::endl;
         parserLogFile.flush();
+    }
+    void writeAsm(const std::string &code)
+    {
+        if (is_unreachable)
+        {
+            return; // Skip writing code if we are in an unreachable state
+        }
+        if (buffer_mode)
+        {
+            code_buffer << code;
+        }
+        else
+        {
+            assemblyFile << code;
+        }
     }
 
     void writeIntoErrorFile(const std::string message)
@@ -142,66 +160,65 @@ options
 
 start : p = program
 {
+    is_unreachable = false;
     log_rule_to_file("start : program", $p.ctx->stop->getLine());
     std::string symbol_table_str = st.get_all_scopes_as_string();
     writeIntoparserLogFile(symbol_table_str);
     writeIntoparserLogFile("Total number of lines: " + std::to_string($p.ctx->stop->getLine()));
     writeIntoparserLogFile("Total number of errors: " + std::to_string(syntaxErrorCount) + "\n");
-    assemblyFile << R"(
-new_line proc
-    push ax
-    push dx
-    mov ah,2
-    mov dl,0Dh
-    int 21h
-    mov ah,2
-    mov dl,0Ah
-    int 21h
-    pop dx
-    pop ax
-    ret
-new_line endp
+    writeAsm("\tnew_line proc\n");
+    writeAsm("\t\tpush ax\n");
+    writeAsm("\t\tpush dx\n");
+    writeAsm("\t\tmov ah, 2\n");
+    writeAsm("\t\tmov dl, 0Dh\n");
+    writeAsm("\t\tint 21h\n");
+    writeAsm("\t\tmov ah, 2\n");
+    writeAsm("\t\tmov dl, 0Ah\n");
+    writeAsm("\t\tint 21h\n");
+    writeAsm("\t\tpop dx\n");
+    writeAsm("\t\tpop ax\n");
+    writeAsm("\t\tret\n");
+    writeAsm("\tnew_line endp\n");
 
-print_output proc  ;prints what is in ax
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    lea si,number
-    mov bx,10
-    add si,4
-    cmp ax,0
-    jnge negate
-print:
-    xor dx,dx
-    div bx
-    mov [si],dl
-    add [si],'0'
-    dec si
-    cmp ax,0
-    jne print
-    inc si
-    lea dx,si
-    mov ah,9
-    int 21h
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-negate:
-    push ax
-    mov ah,2
-    mov dl,'-'
-    int 21h
-    pop ax
-    neg ax
-    jmp print
-print_output endp
-)";
-    assemblyFile << "\nEND MAIN\n";
+    writeAsm("\tprint_output proc\n");
+    writeAsm("\t\tpush ax\n");
+    writeAsm("\t\tpush bx\n");
+    writeAsm("\t\tpush cx\n");
+    writeAsm("\t\tpush dx\n");
+    writeAsm("\t\tpush si\n");
+    writeAsm("\t\tlea si, number\n");
+    writeAsm("\t\tmov bx, 10\n");
+    writeAsm("\t\tadd si, 4\n");
+    writeAsm("\t\tcmp ax, 0\n");
+    writeAsm("\t\tjnge negate\n");
+    writeAsm("\t\tprint:\n");
+    writeAsm("\t\txor dx, dx\n");
+    writeAsm("\t\tdiv bx\n");
+    writeAsm("\t\tmov [si], dl\n");
+    writeAsm("\t\tadd [si], '0'\n");
+    writeAsm("\t\tdec si\n");
+    writeAsm("\t\tcmp ax, 0\n");
+    writeAsm("\t\tjne print\n");
+    writeAsm("\t\tinc si\n");
+    writeAsm("\t\tlea dx, si\n");
+    writeAsm("\t\tmov ah, 9\n");
+    writeAsm("\t\tint 21h\n");
+    writeAsm("\t\tpop si\n");
+    writeAsm("\t\tpop dx\n");
+    writeAsm("\t\tpop cx\n");
+    writeAsm("\t\tpop bx\n");
+    writeAsm("\t\tpop ax\n");
+    writeAsm("\t\tret\n");
+    writeAsm("\t\tnegate:\n");
+    writeAsm("\t\tpush ax\n");
+    writeAsm("\t\tmov ah, 2\n");
+    writeAsm("\t\tmov dl, '-'\n");
+    writeAsm("\t\tint 21h\n");
+    writeAsm("\t\tpop ax\n");
+    writeAsm("\t\tneg ax\n");
+    writeAsm("\t\tjmp print\n");
+    writeAsm("\tprint_output endp\n");
+    writeAsm("\nEND MAIN\n");
     if (parserLogFile.is_open())
         parserLogFile.close();
     if (errorFile.is_open())
@@ -266,7 +283,7 @@ id = ID
     var_type = "";
 }
 LPAREN { st.enter_scope(); }
-p = parameter_list RPAREN { st.exit_scope(); }
+p = parameter_list[4] RPAREN { st.exit_scope(); }
 sm = SEMICOLON
 {
     $formatted_text = $t.formatted_text + " " + $id->getText() + "(" + $p.formatted_text + ")" + $sm->getText();
@@ -307,8 +324,8 @@ LPAREN RPAREN sm = SEMICOLON
 };
 
 func_definition returns[std::string formatted_text]
-    : t = type_specifier
-          id = ID
+    : t = type_specifier { is_unreachable = false; }
+id = ID
 {
     symbol_info *info = st.lookup($id->getText());
     if (info != nullptr)
@@ -339,31 +356,32 @@ func_definition returns[std::string formatted_text]
     {
         st.insert($id->getText(), "ID", $t.formatted_text, 0, "function", "function_definition");
     }
+    is_unreachable = false;
+    std::cout << "Set flag to false for function definition\n";
     if (!code_segment_started)
     {
         code_segment_started = true;
-        assemblyFile << ".CODE" << std::endl;
+        writeAsm(".CODE\n");
     }
     if ($id->getText() == "main")
     {
-        assemblyFile << "\n"
-                     << $id->getText() << " PROC\n";
-        assemblyFile << "    MOV AX, @DATA\n";
-        assemblyFile << "    MOV DS, AX\n";
-        assemblyFile << "    PUSH BP\n";
-        assemblyFile << "    MOV BP, SP\n";
+        writeAsm("\n" + $id->getText() + " PROC\n");
+        writeAsm("    MOV AX, @DATA\n");
+        writeAsm("    MOV DS, AX\n");
+        writeAsm("    PUSH BP\n");
+        writeAsm("    MOV BP, SP\n");
     }
     else
     {
-        assemblyFile << "\n"
-                     << $id->getText() << " PROC\n";
-        assemblyFile << "    PUSH BP\n";
-        assemblyFile << "    MOV BP, SP\n";
+        writeAsm("\n" + $id->getText() + " PROC\n");
+        writeAsm("    PUSH BP\n");
+        writeAsm("    MOV BP, SP\n");
     }
     current_local_offset = 0;
+    int param_offset = 4;
 }
 LPAREN { st.enter_scope(); }
-p = parameter_list RPAREN cs = compound_statement_for_func
+p = parameter_list[4] RPAREN cs = compound_statement_for_func
 {
     if ($t.formatted_text == "void" && $cs.formatted_text.find("return") != std::string::npos)
     {
@@ -412,23 +430,25 @@ p = parameter_list RPAREN cs = compound_statement_for_func
     writeIntoparserLogFile(symbol_table_str);
     log_rule_to_file("func_definition : type_specifier ID LPAREN parameter_list RPAREN compound_statement", $cs.ctx->stop->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
-    assemblyFile << "    MOV SP, BP\n";
-    assemblyFile << "    POP BP\n";
+    is_unreachable = false;
+    writeAsm("    MOV SP, BP\n");
+    writeAsm("    POP BP\n");
     if ($id->getText() == "main")
     {
-        assemblyFile << "    MOV AH, 4CH\n";
-        assemblyFile << "    INT 21H\n";
+        writeAsm("    MOV AH, 4CH\n");
+        writeAsm("    INT 21H\n");
     }
     else
     {
-        assemblyFile << "    RET\n";
+        writeAsm("    RET\n");
     }
-    assemblyFile << $id->getText() << " ENDP\n";
+    writeAsm($id->getText() + " ENDP\n");
 
     st.exit_scope();
 }
 | t = type_specifier id = ID
 {
+    is_unreachable = false;
     symbol_info *info = st.lookup($id->getText());
     if (info != nullptr)
     {
@@ -446,23 +466,21 @@ p = parameter_list RPAREN cs = compound_statement_for_func
         if (!code_segment_started)
         {
             code_segment_started = true;
-            assemblyFile << ".CODE" << std::endl;
+            writeAsm(".CODE\n");
         }
         if ($id->getText() == "main")
         {
-            assemblyFile << "\n"
-                         << $id->getText() << " PROC\n";
-            assemblyFile << "    MOV AX, @DATA\n";
-            assemblyFile << "    MOV DS, AX\n";
-            assemblyFile << "    PUSH BP\n";
-            assemblyFile << "    MOV BP, SP\n";
+            writeAsm("\n" + $id->getText() + " PROC\n");
+            writeAsm("    MOV AX, @DATA\n");
+            writeAsm("    MOV DS, AX\n");
+            writeAsm("    PUSH BP\n");
+            writeAsm("    MOV BP, SP\n");
         }
         else
         {
-            assemblyFile << "\n"
-                         << $id->getText() << " PROC\n";
-            assemblyFile << "    PUSH BP\n";
-            assemblyFile << "    MOV BP, SP\n";
+            writeAsm("\n" + $id->getText() + " PROC\n");
+            writeAsm("    PUSH BP\n");
+            writeAsm("    MOV BP, SP\n");
         }
         current_local_offset = 0;
     }
@@ -487,54 +505,39 @@ cs = compound_statement_for_func
     writeIntoparserLogFile(symbol_table_str);
     log_rule_to_file("func_definition : type_specifier ID LPAREN RPAREN compound_statement", $cs.ctx->stop->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
-    assemblyFile << "    MOV SP, BP\n";
-    assemblyFile << "    POP BP\n";
+    is_unreachable = false;
+    writeAsm("    MOV SP, BP\n");
+    writeAsm("    POP BP\n");
     if ($id->getText() == "main")
     {
-        assemblyFile << "    MOV AH, 4CH\n";
-        assemblyFile << "    INT 21H\n";
+        writeAsm("    MOV AH, 4CH\n");
+        writeAsm("    INT 21H\n");
     }
     else
     {
-        assemblyFile << "    RET\n";
+        writeAsm("    RET\n");
     }
-    assemblyFile << $id->getText() << " ENDP\n";
+    writeAsm($id->getText() + " ENDP\n");
     st.exit_scope();
 };
 
-parameter_list returns[std::string formatted_text]
-    : pl = parameter_list COMMA t = type_specifier id = ID
+parameter_list[int current_offset] returns[std::string formatted_text, int total_size]
+    : t = type_specifier id = ID
 {
+    st.insert($id->getText(), "ID", "null", 0, $t.formatted_text, "parameter");
     symbol_info *info = st.get_current_scope_table()->lookup($id->getText());
-    if (info != nullptr)
-    {
-        writeIntoErrorFile("Error at line " + std::to_string($id->getLine()) + ": Multiple declaration of " + $id->getText() + " in parameter\n");
-        syntaxErrorCount++;
-    }
-    else
-    {
-        st.insert($id->getText(), "ID", "null", 0, $t.formatted_text, "parameter");
-    }
-    $formatted_text = $pl.formatted_text + "," + $t.formatted_text + " " + $id->getText();
-    log_rule_to_file("parameter_list : parameter_list COMMA type_specifier ID", $t.ctx->start->getLine());
-}
-| t = type_specifier id = ID
-{
-    symbol_info *info = st.get_current_scope_table()->lookup($id->getText());
-    if (info != nullptr)
-    {
-        writeIntoErrorFile("Error at line " + std::to_string($id->getLine()) + ": Parameter '" + $id->getText() + "' is already declared\n");
-        syntaxErrorCount++;
-    }
-    else
-    {
-        st.insert($id->getText(), "ID", "null", 0, $t.formatted_text, "parameter");
-    }
+    if (info)
+        info->set_offset(current_offset);
+
     $formatted_text = $t.formatted_text + " " + $id->getText();
-    log_rule_to_file("parameter_list : type_specifier ID", $t.ctx->start->getLine());
-    writeIntoparserLogFile($formatted_text + "\n");
+    int my_size = ($t.formatted_text == "int" ? 2 : 4);
+    $total_size = my_size;
 }
-| err = parameter_list_err
+(COMMA pl = parameter_list[current_offset + my_size] {
+    $formatted_text += ", " + $pl.formatted_text;
+    $total_size += $pl.total_size;
+})
+    ? | err = parameter_list_err
 {
     $formatted_text = $err.formatted_text;
     writeIntoErrorFile("Error at line " + std::to_string($err.ctx->start->getLine()) + ": " + $err.error_name + "\n");
@@ -660,14 +663,14 @@ declaration_list returns[std::string formatted_text]
         writeIntoparserLogFile($formatted_text + "\n");
         if (st.get_current_scope_id() == 1)
         {
-            assemblyFile << "    " << $id->getText() << (var_type == "int" ? " DW ?\n" : " DD ?\n");
+            writeAsm("    " + $id->getText() + (var_type == "int" ? " DW ?\n" : " DD ?\n"));
         }
         else
         {
             int size = (var_type == "int" ? 2 : 4);
             current_local_offset -= size;
             st.set_offset_for_symbol($id->getText(), current_local_offset);
-            assemblyFile << "    SUB SP, " << size << " ; " << $id->getText() << " at [BP" << std::to_string(current_local_offset) << "]\n";
+            writeAsm("    SUB SP, " + std::to_string(size) + " ; " + $id->getText() + " at [BP" + std::to_string(current_local_offset) + "]\n");
         }
     }
 }
@@ -707,7 +710,7 @@ declaration_list returns[std::string formatted_text]
         }
         if (st.get_current_scope_id() == 1)
         {
-            assemblyFile << "    " << $id->getText() << (var_type == "int" ? " DW " : " DD ") << $ci->getText() << " DUP(?)\n";
+            writeAsm("    " + $id->getText() + (var_type == "int" ? " DW " : " DD ") + $ci->getText() + " DUP(?)\n");
         }
         else
         {
@@ -716,7 +719,7 @@ declaration_list returns[std::string formatted_text]
             int total_size = element_size * array_size;
             current_local_offset -= total_size;
             st.set_offset_for_symbol($id->getText(), current_local_offset);
-            assemblyFile << "    SUB SP, " << total_size << " ; Array " << $id->getText() << " starts at [BP" << std::to_string(current_local_offset) << "]\n";
+            writeAsm("    SUB SP, " + std::to_string(total_size) + " ; Array " + $id->getText() + " starts at [BP" + std::to_string(current_local_offset) + "]\n");
         }
     }
 }
@@ -742,14 +745,14 @@ declaration_list returns[std::string formatted_text]
         writeIntoparserLogFile($formatted_text + "\n");
         if (st.get_current_scope_id() == 1)
         {
-            assemblyFile << "    " << $id->getText() << (var_type == "int" ? " DW ?\n" : " DD ?\n");
+            writeAsm("    " + $id->getText() + (var_type == "int" ? " DW ?\n" : " DD ?\n"));
         }
         else
         {
             int size = (var_type == "int" ? 2 : 4);
             current_local_offset -= size;
             st.set_offset_for_symbol($id->getText(), current_local_offset);
-            assemblyFile << "    SUB SP, " << size << " ; " << $id->getText() << " at [BP" << std::to_string(current_local_offset) << "]\n";
+            writeAsm("    SUB SP, " + std::to_string(size) + " ; " + $id->getText() + " at [BP" + std::to_string(current_local_offset) + "]\n");
         }
     }
 }
@@ -788,7 +791,7 @@ declaration_list returns[std::string formatted_text]
             writeIntoparserLogFile($formatted_text + "\n");
             if (st.get_current_scope_id() == 1)
             {
-                assemblyFile << "    " << $id->getText() << (var_type == "int" ? " DW " : " DD ") << $ci->getText() << " DUP(?)\n";
+                writeAsm("    " + $id->getText() + (var_type == "int" ? " DW " : " DD ") + $ci->getText() + " DUP(?)\n");
             }
             else
             {
@@ -797,7 +800,7 @@ declaration_list returns[std::string formatted_text]
                 int total_size = element_size * array_size;
                 current_local_offset -= total_size;
                 st.set_offset_for_symbol($id->getText(), current_local_offset);
-                assemblyFile << "    SUB SP, " << total_size << " ; Array " << $id->getText() << " starts at [BP" << std::to_string(current_local_offset) << "]\n";
+                writeAsm("    SUB SP, " + std::to_string(total_size) + " ; Array " + $id->getText() + " starts at [BP" + std::to_string(current_local_offset) + "]\n");
             }
         }
     }
@@ -854,18 +857,73 @@ statements returns[std::string formatted_text]
 };
 
 statement returns[std::string formatted_text]
-    : kw = FOR LPAREN e1 = expression_statement e2 = expression_statement e3 = expression RPAREN s = statement
+    : kw = FOR LPAREN
+          e1 = expression_statement
 {
+    {
+        // 1. Create labels for the start and end of the loop.
+        int start_label = label_count++;
+        int end_label = label_count++;
+
+        // 2. Place the START label.
+        writeAsm("L" + std::to_string(start_label) + ":\n");
+
+        // 3. Push BOTH labels onto the stack to be used by later actions.
+        // Order is important: end label, then start label.
+        label_stack.push_back(end_label);
+        label_stack.push_back(start_label);
+    }
+}
+e2 = expression_statement
+{
+    {
+        // 4. Test the condition.
+        writeAsm("    CMP AX, 0\n");
+
+        // Peek at the end_label (it's second from the top of the stack).
+        int end_label = label_stack.at(label_stack.size() - 2);
+        writeAsm("    JE L" + std::to_string(end_label) + "\n");
+
+        // 5. Turn on buffer mode to capture the increment expression's code.
+        buffer_mode = true;
+        code_buffer.str("");
+    }
+}
+e3 = expression
+{
+    // 6. Turn off buffer mode.
+    buffer_mode = false;
+}
+RPAREN s = statement
+{
+    {
+        // 7. Retrieve the labels from the stack.
+        int start_label = label_stack.back();
+        label_stack.pop_back();
+        int end_label = label_stack.back();
+        label_stack.pop_back();
+
+        // 8. Write the buffered increment code.
+        writeAsm(code_buffer.str());
+
+        // 9. Jump back to the start of the loop.
+        writeAsm("    JMP L" + std::to_string(start_label) + "\n");
+
+        // 10. Place the END label.
+        writeAsm("L" + std::to_string(end_label) + ":\n");
+    }
+
+    // Logging/formatting
     $formatted_text = $kw->getText() + "(" + $e1.formatted_text + $e2.formatted_text + $e3.formatted_text + ")" + $s.formatted_text;
-    log_rule_to_file("statement : FOR LPAREN expression_statement expression_statement expression RPAREN statement", $kw->getLine());
+    log_rule_to_file("statement : FOR LPAREN ... RPAREN statement", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
 }
 | kw = IF LPAREN e = expression RPAREN
 {
     {
-        assemblyFile << "    CMP AX, 0 ; Check if the condition is false\n";
+        writeAsm("    CMP AX, 0 ; Check if the condition is false\n");
         int end_if_label = label_count++;
-        assemblyFile << "    JE L" << end_if_label << "\n";
+        writeAsm("    JE L" + std::to_string(end_if_label) + "\n");
         label_stack.push_back(end_if_label);
     }
 }
@@ -874,7 +932,7 @@ s = statement
     {
         int end_if_label = label_stack.back();
         label_stack.pop_back();
-        assemblyFile << "L" << end_if_label << ":\n";
+        writeAsm("L" + std::to_string(end_if_label) + ":\n");
     }
 
     $formatted_text = $kw->getText() + "(" + $e.formatted_text + ")" + $s.formatted_text;
@@ -884,10 +942,10 @@ s = statement
 | kw = IF LPAREN e = expression RPAREN
 {
     {
-        assemblyFile << "    CMP AX, 0 ; Check if the condition is false\n";
+        writeAsm("    CMP AX, 0 ; Check if the condition is false\n");
         int else_label = label_count++;
         int end_label = label_count++;
-        assemblyFile << "    JE L" << else_label << "\n";
+        writeAsm("    JE L" + std::to_string(else_label) + "\n");
         label_stack.push_back(end_label);
         label_stack.push_back(else_label);
     }
@@ -898,8 +956,8 @@ s1 = statement kw2 = ELSE
         int else_label = label_stack.back();
         label_stack.pop_back();
         int end_label = label_stack.back();
-        assemblyFile << "    JMP L" << end_label << "\n";
-        assemblyFile << "L" << else_label << ":\n";
+        writeAsm("    JMP L" + std::to_string(end_label) + "\n");
+        writeAsm("L" + std::to_string(else_label) + ":\n");
     }
 }
 s2 = statement
@@ -908,15 +966,59 @@ s2 = statement
         int end_label = label_stack.back();
         label_stack.pop_back();
 
-        assemblyFile << "L" << end_label << ":\n";
+        writeAsm("L" + std::to_string(end_label) + ":\n");
     }
 
     $formatted_text = $kw->getText() + "(" + $e.formatted_text + ")" + $s1.formatted_text + " " + $kw2->getText() + " " + $s2.formatted_text;
     log_rule_to_file("statement : IF LPAREN expression RPAREN statement ELSE statement", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
 }
-| kw = WHILE LPAREN e = expression RPAREN s = statement
+| kw = WHILE
 {
+    {
+        // ACTION 1: Before the condition
+        // Create start and end labels for the loop.
+        int start_label = label_count++;
+        int end_label = label_count++;
+
+        // Place the start label in the code.
+        writeAsm("L" + std::to_string(start_label) + ":\n");
+
+        // Push the labels onto the stack for later actions to use.
+        label_stack.push_back(end_label);
+        label_stack.push_back(start_label);
+    }
+}
+LPAREN e = expression RPAREN
+{
+    {
+        // ACTION 2: After the condition
+        // The result of the expression is in AX. Test if it's false.
+        writeAsm("    CMP AX, 0\n");
+
+        // Peek at the end label (it's second-from-the-top of the stack)
+        // and jump to it if the condition is false.
+        int end_label = label_stack.at(label_stack.size() - 2);
+        writeAsm("    JE L" + std::to_string(end_label) + "\n");
+    }
+}
+s = statement
+{
+    {
+        // ACTION 3: After the loop body
+        // Retrieve the start and end labels from the stack.
+        int start_label = label_stack.back();
+        label_stack.pop_back();
+        int end_label = label_stack.back();
+        label_stack.pop_back();
+
+        // Generate the unconditional jump back to the start of the loop.
+        writeAsm("    JMP L" + std::to_string(start_label) + "\n");
+        // Place the end label.
+        writeAsm("L" + std::to_string(end_label) + ":\n");
+    }
+
+    // Logging/formatting
     $formatted_text = $kw->getText() + "(" + $e.formatted_text + ")" + $s.formatted_text;
     log_rule_to_file("statement : WHILE LPAREN expression RPAREN statement", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
@@ -928,27 +1030,28 @@ s2 = statement
     int offset = info->get_offset();
     if (offset == 0)
     {
-        assemblyFile << "    MOV AX, " << $id->getText() << "\n";
+        writeAsm("    MOV AX, " + $id->getText() + "\n");
     }
     else
     {
         if (offset > 0)
         {
-            assemblyFile << "    MOV AX, WORD PTR [BP+" << std::to_string(offset) << "]\n";
+            writeAsm("    MOV AX, WORD PTR [BP+" + std::to_string(offset) + "]\n");
         }
         else
         {
-            assemblyFile << "    MOV AX, WORD PTR [BP" << std::to_string(offset) << "]\n";
+            writeAsm("    MOV AX, WORD PTR [BP" + std::to_string(offset) + "]\n");
         }
     }
-    assemblyFile << "    CALL print_output\n";
-    assemblyFile << "    CALL new_line\n";
+    writeAsm("    CALL print_output\n");
+    writeAsm("    CALL new_line\n");
     $formatted_text = $kw->getText() + "(" + $id->getText() + ")" + $sm->getText();
     log_rule_to_file("statement : PRINTLN LPAREN ID RPAREN SEMICOLON", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
 }
 | kw = RETURN e = expression sm = SEMICOLON
 {
+    is_unreachable = true;
     $formatted_text = $kw->getText() + " " + $e.formatted_text + $sm->getText();
     log_rule_to_file("statement : RETURN expression SEMICOLON", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
@@ -1036,7 +1139,7 @@ expression returns[std::string formatted_text]
 {
     // ACTION 1: After the index ('idx') is evaluated, its value is in AX.
     // Save it on the stack before we evaluate the right side.
-    assemblyFile << "    PUSH AX\n";
+    writeAsm("    PUSH AX\n");
 }
 op = ASSIGNOP rhs = expression
 {
@@ -1045,8 +1148,8 @@ op = ASSIGNOP rhs = expression
     $formatted_text = $id->getText() + "[" + $idx.formatted_text + "]" + $op->getText() + $rhs.formatted_text;
     log_rule_to_file("expression : ID '[' expression ']' ASSIGNOP expression", $id->getLine());
 
-    assemblyFile << "    POP BX\n";    // Pop the index into BX
-    assemblyFile << "    SHL BX, 1\n"; // Scale index by 2 for WORDs
+    writeAsm("    POP BX\n");    // Pop the index into BX
+    writeAsm("    SHL BX, 1\n"); // Scale index by 2 for WORDs
 
     symbol_info *info = st.lookup($id->getText());
     if (info != nullptr)
@@ -1054,23 +1157,23 @@ op = ASSIGNOP rhs = expression
         int offset = info->get_offset();
         if (offset == 0)
         { // Global array
-            assemblyFile << "    LEA SI, " << $id->getText() << "\n";
+            writeAsm("    LEA SI, " + $id->getText() + "\n");
         }
         else
         { // Local array
             if (offset > 0)
             {
-                assemblyFile << "    LEA SI, [BP+" << std::to_string(offset) << "]\n";
+                writeAsm("    LEA SI, [BP+" + std::to_string(offset) + "]\n");
             }
             else
             {
-                assemblyFile << "    LEA SI, [BP" << std::to_string(offset) << "]\n";
+                writeAsm("    LEA SI, [BP" + std::to_string(offset) + "]\n");
             }
         }
     }
 
-    assemblyFile << "    ADD SI, BX\n";   // Final address is in SI
-    assemblyFile << "    MOV [SI], AX\n"; // Store the RHS value (in AX) at that address
+    writeAsm("    ADD SI, BX\n");   // Final address is in SI
+    writeAsm("    MOV [SI], AX\n"); // Store the RHS value (in AX) at that address
 
     writeIntoparserLogFile($formatted_text + "\n");
 }
@@ -1087,17 +1190,17 @@ op = ASSIGNOP rhs = expression
 
         if (offset == 0)
         {
-            assemblyFile << "    MOV " << $id->getText() << ", AX\n";
+            writeAsm("    MOV " + $id->getText() + ", AX\n");
         }
         else
         {
             if (offset > 0)
             {
-                assemblyFile << "    MOV " << ptr_type << " [BP+" << std::to_string(offset) << "], AX\n";
+                writeAsm("    MOV " + ptr_type + " [BP+" + std::to_string(offset) + "], AX\n");
             }
             else
             {
-                assemblyFile << "    MOV " << ptr_type << " [BP" << std::to_string(offset) << "], AX\n";
+                writeAsm("    MOV " + ptr_type + " [BP" + std::to_string(offset) + "], AX\n");
             }
         }
     }
@@ -1119,22 +1222,22 @@ logic_expression returns[std::string formatted_text]
 }
 | l = rel_expression
 {
-    assemblyFile << "    PUSH AX\n";
+    writeAsm("    PUSH AX\n");
 }
 op = LOGICOP r = rel_expression
 {
     $formatted_text = $l.formatted_text + $op->getText() + $r.formatted_text;
     log_rule_to_file("logic_expression : rel_expression LOGICOP rel_expression", $l.ctx->start->getLine());
 
-    assemblyFile << "    POP BX\n";
+    writeAsm("    POP BX\n");
 
     if ($op->getText() == "&&")
     {
-        assemblyFile << "    AND AX, BX ; AX = (LHS result) AND (RHS result)\n";
+        writeAsm("    AND AX, BX ; AX = (LHS result) AND (RHS result)\n");
     }
     else
     { // ||
-        assemblyFile << "    OR AX, BX  ; AX = (LHS result) OR (RHS result)\n";
+        writeAsm("    OR AX, BX  ; AX = (LHS result) OR (RHS result)\n");
     }
 
     writeIntoparserLogFile($formatted_text + "\n");
@@ -1149,15 +1252,15 @@ rel_expression returns[std::string formatted_text]
 }
 | s1 = simple_expression
 {
-    assemblyFile << "    PUSH AX\n";
+    writeAsm("    PUSH AX\n");
 }
 op = RELOP s2 = simple_expression
 {
     $formatted_text = $s1.formatted_text + $op->getText() + $s2.formatted_text;
     log_rule_to_file("rel_expression : simple_expression RELOP simple_expression", $s1.ctx->start->getLine());
 
-    assemblyFile << "    POP BX\n";
-    assemblyFile << "    CMP BX, AX ; Compare LHS (BX) with RHS (AX)\n";
+    writeAsm("    POP BX\n");
+    writeAsm("    CMP BX, AX ; Compare LHS (BX) with RHS (AX)\n");
 
     std::string op_text = $op->getText();
     std::string jump_instruction;
@@ -1178,15 +1281,15 @@ op = RELOP s2 = simple_expression
     int true_label = label_count++;
     int end_label = label_count++;
 
-    assemblyFile << "    " << jump_instruction << " L" << true_label << " ; Jump on true\n";
+    writeAsm("    " + jump_instruction + " L" + std::to_string(true_label) + " ; Jump on true\n");
 
-    assemblyFile << "    MOV AX, 0           ; False case\n";
-    assemblyFile << "    JMP L" << end_label << "\n";
+    writeAsm("    MOV AX, 0           ; False case\n");
+    writeAsm("    JMP L" + std::to_string(end_label) + "\n");
 
-    assemblyFile << "L" << true_label << ":\n";
-    assemblyFile << "    MOV AX, 1           ; True case\n";
+    writeAsm("L" + std::to_string(true_label) + ":\n");
+    writeAsm("    MOV AX, 1           ; True case\n");
 
-    assemblyFile << "L" << end_label << ":\n";
+    writeAsm("L" + std::to_string(end_label) + ":\n");
 
     writeIntoparserLogFile($formatted_text + "\n");
 };
@@ -1200,22 +1303,22 @@ simple_expression returns[std::string formatted_text]
 }
 | s = simple_expression
 {
-    assemblyFile << "    PUSH AX\n";
+    writeAsm("    PUSH AX\n");
 }
 op = ADDOP t = term
 {
     $formatted_text = $s.formatted_text + $op->getText() + $t.formatted_text;
     log_rule_to_file("simple_expression : simple_expression ADDOP term", $s.ctx->start->getLine());
 
-    assemblyFile << "    POP BX\n";
+    writeAsm("    POP BX\n");
     if ($op->getText() == "+")
     {
-        assemblyFile << "    ADD AX, BX ; AX = RHS + LHS\n";
+        writeAsm("    ADD AX, BX ; AX = RHS + LHS\n");
     }
     else
     {
-        assemblyFile << "    SUB BX, AX\n";
-        assemblyFile << "    MOV AX, BX ; Move result back to AX\n";
+        writeAsm("    SUB BX, AX\n");
+        writeAsm("    MOV AX, BX ; Move result back to AX\n");
     }
 
     writeIntoparserLogFile($formatted_text + "\n");
@@ -1230,26 +1333,26 @@ term returns[std::string formatted_text]
 }
 | t = term
 {
-    assemblyFile << "    PUSH AX\n";
+    writeAsm("    PUSH AX\n");
 }
 op = MULOP u = unary_expression
 {
     $formatted_text = $t.formatted_text + $op->getText() + $u.formatted_text;
     log_rule_to_file("term : term MULOP unary_expression", $t.ctx->start->getLine());
 
-    assemblyFile << "    POP BX\n";
+    writeAsm("    POP BX\n");
     if ($op->getText() == "*")
     {
-        assemblyFile << "    IMUL BX  ; AX = AX * BX\n";
+        writeAsm("    IMUL BX  ; AX = AX * BX\n");
     }
     else
     {
-        assemblyFile << "    XCHG AX, BX ; AX has LHS(BX), BX has RHS(AX)\n";
-        assemblyFile << "    CWD         ; Extend sign of AX into DX for division\n";
-        assemblyFile << "    IDIV BX     ; AX = DX:AX / BX\n";
+        writeAsm("    XCHG AX, BX ; AX has LHS(BX), BX has RHS(AX)\n");
+        writeAsm("    CWD         ; Extend sign of AX into DX for division\n");
+        writeAsm("    IDIV BX     ; AX = DX:AX / BX\n");
         if ($op->getText() == "%")
         {
-            assemblyFile << "    MOV AX, DX ; For modulus, the result is the remainder in DX\n";
+            writeAsm("    MOV AX, DX ; For modulus, the result is the remainder in DX\n");
         }
     }
 
@@ -1263,7 +1366,7 @@ unary_expression returns[std::string formatted_text]
     log_rule_to_file("unary_expression : ADDOP unary_expression", $op->getLine());
     if ($op->getText() == "-")
     {
-        assemblyFile << "    NEG AX ; Negate the value in AX\n";
+        writeAsm("    NEG AX ; Negate the value in AX\n");
     }
 
     writeIntoparserLogFile($formatted_text + "\n");
@@ -1287,33 +1390,33 @@ factor returns[std::string formatted_text]
     $formatted_text = $id->getText() + "[" + $e.formatted_text + "]" + $op->getText();
     log_rule_to_file("factor : ID LTHIRD ... RTHIRD INCOP", $id->getLine());
 
-    assemblyFile << "    MOV BX, AX\n";
-    assemblyFile << "    SHL BX, 1\n";
+    writeAsm("    MOV BX, AX\n");
+    writeAsm("    SHL BX, 1\n");
     symbol_info *info = st.lookup($id->getText());
     if (info != nullptr)
     {
         int offset = info->get_offset();
         if (offset == 0)
         {
-            assemblyFile << "    LEA SI, " << $id->getText() << "\n";
+            writeAsm("    LEA SI, " + $id->getText() + "\n");
         }
         else
         {
             if (offset > 0)
             {
-                assemblyFile << "    LEA SI, [BP+" << std::to_string(offset) << "]\n";
+                writeAsm("    LEA SI, [BP+" + std::to_string(offset) + "]\n");
             }
             else
             {
-                assemblyFile << "    LEA SI, [BP" << std::to_string(offset) << "]\n";
+                writeAsm("    LEA SI, [BP" + std::to_string(offset) + "]\n");
             }
         }
-        assemblyFile << "    ADD SI, BX\n";
+        writeAsm("    ADD SI, BX\n");
     }
-    assemblyFile << "    MOV AX, [SI]\n";
-    assemblyFile << "    PUSH AX\n";
-    assemblyFile << "    INC WORD PTR [SI]\n";
-    assemblyFile << "    POP AX\n";
+    writeAsm("    MOV AX, [SI]\n");
+    writeAsm("    PUSH AX\n");
+    writeAsm("    INC WORD PTR [SI]\n");
+    writeAsm("    POP AX\n");
 
     writeIntoparserLogFile($formatted_text + "\n");
 }
@@ -1322,33 +1425,33 @@ factor returns[std::string formatted_text]
     $formatted_text = $id->getText() + "[" + $e.formatted_text + "]" + $op->getText();
     log_rule_to_file("factor : ID LTHIRD ... RTHIRD DECOP", $id->getLine());
 
-    assemblyFile << "    MOV BX, AX\n";
-    assemblyFile << "    SHL BX, 1\n";
+    writeAsm("    MOV BX, AX\n");
+    writeAsm("    SHL BX, 1\n");
     symbol_info *info = st.lookup($id->getText());
     if (info != nullptr)
     {
         int offset = info->get_offset();
         if (offset == 0)
         {
-            assemblyFile << "    LEA SI, " << $id->getText() << "\n";
+            writeAsm("    LEA SI, " + $id->getText() + "\n");
         }
         else
         {
             if (offset > 0)
             {
-                assemblyFile << "    LEA SI, [BP+" << std::to_string(offset) << "]\n";
+                writeAsm("    LEA SI, [BP+" + std::to_string(offset) + "]\n");
             }
             else
             {
-                assemblyFile << "    LEA SI, [BP" << std::to_string(offset) << "]\n";
+                writeAsm("    LEA SI, [BP" + std::to_string(offset) + "]\n");
             }
         }
-        assemblyFile << "    ADD SI, BX\n";
+        writeAsm("    ADD SI, BX\n");
     }
-    assemblyFile << "    MOV AX, [SI]\n";
-    assemblyFile << "    PUSH AX\n";
-    assemblyFile << "    DEC WORD PTR [SI]\n";
-    assemblyFile << "    POP AX\n";
+    writeAsm("    MOV AX, [SI]\n");
+    writeAsm("    PUSH AX\n");
+    writeAsm("    DEC WORD PTR [SI]\n");
+    writeAsm("    POP AX\n");
 
     writeIntoparserLogFile($formatted_text + "\n");
 }
@@ -1357,30 +1460,30 @@ factor returns[std::string formatted_text]
     $formatted_text = $id->getText() + "[" + $e.formatted_text + "]";
     log_rule_to_file("factor : ID LTHIRD expression RTHIRD", $id->getLine());
 
-    assemblyFile << "    MOV BX, AX\n";
-    assemblyFile << "    SHL BX, 1\n";
+    writeAsm("    MOV BX, AX\n");
+    writeAsm("    SHL BX, 1\n");
     symbol_info *info = st.lookup($id->getText());
     if (info != nullptr)
     {
         int offset = info->get_offset();
         if (offset == 0)
         {
-            assemblyFile << "    LEA SI, " << $id->getText() << "\n";
+            writeAsm("    LEA SI, " + $id->getText() + "\n");
         }
         else
         {
             if (offset > 0)
             {
-                assemblyFile << "    LEA SI, [BP+" << std::to_string(offset) << "]\n";
+                writeAsm("    LEA SI, [BP+" + std::to_string(offset) + "]\n");
             }
             else
             {
-                assemblyFile << "    LEA SI, [BP" << std::to_string(offset) << "]\n";
+                writeAsm("    LEA SI, [BP" + std::to_string(offset) + "]\n");
             }
         }
     }
-    assemblyFile << "    ADD SI, BX\n";
-    assemblyFile << "    MOV AX, [SI]\n";
+    writeAsm("    ADD SI, BX\n");
+    writeAsm("    MOV AX, [SI]\n");
 
     writeIntoparserLogFile($formatted_text + "\n");
 }
@@ -1395,37 +1498,37 @@ factor returns[std::string formatted_text]
         std::string ptr_type = (info->get_type() == "int") ? "WORD PTR" : "DWORD PTR";
         if (offset == 0)
         {
-            assemblyFile << "    MOV AX, " << $id->getText() << "\n";
+            writeAsm("    MOV AX, " + $id->getText() + "\n");
         }
         else
         {
             if (offset > 0)
             {
-                assemblyFile << "    MOV AX, " << ptr_type << " [BP+" << std::to_string(offset) << "]\n";
+                writeAsm("    MOV AX, " + ptr_type + " [BP+" + std::to_string(offset) + "]\n");
             }
             else
             {
-                assemblyFile << "    MOV AX, " << ptr_type << " [BP" << std::to_string(offset) << "]\n";
+                writeAsm("    MOV AX, " + ptr_type + " [BP" + std::to_string(offset) + "]\n");
             }
         }
-        assemblyFile << "    PUSH AX\n";
-        assemblyFile << "    INC AX\n";
+        writeAsm("    PUSH AX\n");
+        writeAsm("    INC AX\n");
         if (offset == 0)
         {
-            assemblyFile << "    MOV " << $id->getText() << ", AX\n";
+            writeAsm("    MOV " + $id->getText() + ", AX\n");
         }
         else
         {
             if (offset > 0)
             {
-                assemblyFile << "    MOV " << ptr_type << " [BP+" << std::to_string(offset) << "], AX\n";
+                writeAsm("    MOV " + ptr_type + " [BP+" + std::to_string(offset) + "], AX\n");
             }
             else
             {
-                assemblyFile << "    MOV " << ptr_type << " [BP" << std::to_string(offset) << "], AX\n";
+                writeAsm("    MOV " + ptr_type + " [BP" + std::to_string(offset) + "], AX\n");
             }
         }
-        assemblyFile << "    POP AX\n";
+        writeAsm("    POP AX\n");
     }
     writeIntoparserLogFile($formatted_text + "\n");
 }
@@ -1440,37 +1543,37 @@ factor returns[std::string formatted_text]
         std::string ptr_type = (info->get_type() == "int") ? "WORD PTR" : "DWORD PTR";
         if (offset == 0)
         {
-            assemblyFile << "    MOV AX, " << $id->getText() << "\n";
+            writeAsm("    MOV AX, " + $id->getText() + "\n");
         }
         else
         {
             if (offset > 0)
             {
-                assemblyFile << "    MOV AX, " << ptr_type << " [BP+" << std::to_string(offset) << "]\n";
+                writeAsm("    MOV AX, " + ptr_type + " [BP+" + std::to_string(offset) + "]\n");
             }
             else
             {
-                assemblyFile << "    MOV AX, " << ptr_type << " [BP" << std::to_string(offset) << "]\n";
+                writeAsm("    MOV AX, " + ptr_type + " [BP" + std::to_string(offset) + "]\n");
             }
         }
-        assemblyFile << "    PUSH AX\n";
-        assemblyFile << "    DEC AX\n";
+        writeAsm("    PUSH AX\n");
+        writeAsm("    DEC AX\n");
         if (offset == 0)
         {
-            assemblyFile << "    MOV " << $id->getText() << ", AX\n";
+            writeAsm("    MOV " + $id->getText() + ", AX\n");
         }
         else
         {
             if (offset > 0)
             {
-                assemblyFile << "    MOV " << ptr_type << " [BP+" << std::to_string(offset) << "], AX\n";
+                writeAsm("    MOV " + ptr_type + " [BP+" + std::to_string(offset) + "], AX\n");
             }
             else
             {
-                assemblyFile << "    MOV " << ptr_type << " [BP" << std::to_string(offset) << "], AX\n";
+                writeAsm("    MOV " + ptr_type + " [BP" + std::to_string(offset) + "], AX\n");
             }
         }
-        assemblyFile << "    POP AX\n";
+        writeAsm("    POP AX\n");
     }
     writeIntoparserLogFile($formatted_text + "\n");
 }
@@ -1479,7 +1582,31 @@ factor returns[std::string formatted_text]
     std::string arg_text = ($al.ctx != nullptr) ? $al.formatted_text : "";
     $formatted_text = $id->getText() + "(" + arg_text + ")";
     log_rule_to_file("factor : ID LPAREN argument_list RPAREN", $id->getLine());
-    assemblyFile << "    CALL " << $id->getText() << "\n";
+    writeAsm("    CALL " + $id->getText() + "\n");
+    symbol_info *func_info = st.lookup($id->getText());
+    if (func_info != nullptr)
+    {
+        std::string params_str = func_info->get_parameter_list();
+        int total_size = 0;
+        if (!params_str.empty())
+        {
+            std::stringstream ss(params_str);
+            std::string segment;
+            while (std::getline(ss, segment, ','))
+            {
+                if (segment.find("int") != std::string::npos)
+                    total_size += 2;
+                else if (segment.find("float") != std::string::npos)
+                    total_size += 4;
+            }
+        }
+
+        if (total_size > 0)
+        {
+            writeAsm("    ADD SP, " + std::to_string(total_size) + "\n");
+        }
+    }
+
     writeIntoparserLogFile($formatted_text + "\n\n");
 }
 | id = ID
@@ -1494,17 +1621,17 @@ factor returns[std::string formatted_text]
         std::string ptr_type = (info->get_type() == "int") ? "WORD PTR" : "DWORD PTR";
         if (offset == 0)
         {
-            assemblyFile << "    MOV AX, " << $id->getText() << "\n";
+            writeAsm("    MOV AX, " + $id->getText() + "\n");
         }
         else
         {
             if (offset > 0)
             {
-                assemblyFile << "    MOV AX, " << ptr_type << " [BP+" << std::to_string(offset) << "]\n";
+                writeAsm("    MOV AX, " + ptr_type + " [BP+" + std::to_string(offset) + "]\n");
             }
             else
             {
-                assemblyFile << "    MOV AX, " << ptr_type << " [BP" << std::to_string(offset) << "]\n";
+                writeAsm("    MOV AX, " + ptr_type + " [BP" + std::to_string(offset) + "]\n");
             }
         }
     }
@@ -1522,7 +1649,7 @@ factor returns[std::string formatted_text]
     writeIntoparserLogFile($formatted_text + "\n");
     data_type = "int";
 
-    assemblyFile << "    MOV AX, " << $c->getText() << "\n";
+    writeAsm("    MOV AX, " + $c->getText() + "\n");
 }
 | c = CONST_FLOAT
 {
@@ -1531,8 +1658,8 @@ factor returns[std::string formatted_text]
     writeIntoparserLogFile($formatted_text + "\n");
     data_type = "float";
 
-    assemblyFile << "    ; Loading float as integer for now. True floats require FPU instructions.\n";
-    assemblyFile << "    MOV AX, " << $c->getText() << "\n";
+    writeAsm("    ; Loading float as integer for now. True floats require FPU instructions.\n");
+    writeAsm("    MOV AX, " + $c->getText() + "\n");
 };
 
 argument_list returns[std::string formatted_text]
@@ -1548,14 +1675,64 @@ argument_list returns[std::string formatted_text]
 };
 
 arguments returns[std::string formatted_text]
-    : a = arguments COMMA l = logic_expression
+    : l = logic_expression COMMA a = arguments
 {
-    $formatted_text = $a.formatted_text + "," + $l.formatted_text;
-    log_rule_to_file("arguments : arguments COMMA logic_expression", $a.ctx->start->getLine());
+    // find argument offset
+    symbol_info *info = st.lookup($l.formatted_text);
+    int offset = 0;
+    if (info != nullptr)
+    {
+        offset = info->get_offset();
+    }
+    // make the move
+    //  ACTION: After the logic expression is evaluated, its value is in AX.
+    if (offset == 0)
+    {
+        writeAsm("    MOV " + $l.formatted_text + ", AX\n");
+    }
+    else
+    {
+        if (offset > 0)
+        {
+            writeAsm("    MOV AX, WORD PTR [BP+" + std::to_string(offset) + "]\n");
+        }
+        else
+        {
+            writeAsm("    MOV AX, WORD PTR [BP" + std::to_string(offset) + "]\n");
+        }
+    }
+    writeAsm("    PUSH AX\n");
+    $formatted_text = $l.formatted_text + "," + $a.formatted_text;
+    log_rule_to_file("arguments : logic_expression COMMA arguments", $l.ctx->start->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
 }
 | l = logic_expression
 {
+    // find argument offset
+    symbol_info *info = st.lookup($l.formatted_text);
+    int offset = 0;
+    if (info != nullptr)
+    {
+        offset = info->get_offset();
+    }
+    // make the move
+    //  ACTION: After the logic expression is evaluated, its value is in AX.
+    if (offset == 0)
+    {
+        writeAsm("    MOV " + $l.formatted_text + ", AX\n");
+    }
+    else
+    {
+        if (offset > 0)
+        {
+            writeAsm("    MOV AX, WORD PTR [BP+" + std::to_string(offset) + "]\n");
+        }
+        else
+        {
+            writeAsm("    MOV AX, WORD PTR [BP" + std::to_string(offset) + "]\n");
+        }
+    }
+    writeAsm("    PUSH AX\n");
     $formatted_text = $l.formatted_text;
     log_rule_to_file("arguments : logic_expression", $l.ctx->start->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
