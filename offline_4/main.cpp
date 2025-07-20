@@ -24,6 +24,7 @@ std::string data_type = "";
 bool code_segment_started = false;
 int current_local_offset = 0;
 int label_count = 0;
+std::vector<int> label_stack; 
 
 int main(int argc, const char *argv[])
 {
@@ -53,6 +54,7 @@ int main(int argc, const char *argv[])
     assemblyFile.open("code.asm");
     assemblyFile << ".MODEL SMALL\n.STACK 100H\n.DATA\n";
     assemblyFile << "\tCR EQU 0DH\n\tLF EQU 0AH\n";
+    assemblyFile << "number DB 6 DUP('$') ;\n";
     parserLogFile.open(parserLogFileName);
     if (!parserLogFile.is_open())
     {

@@ -29,6 +29,7 @@ options
     extern bool code_segment_started;
     extern int current_local_offset;
     extern int label_count;
+    extern std::vector<int> label_stack;
 }
 
 @parser::members
@@ -146,7 +147,61 @@ start : p = program
     writeIntoparserLogFile(symbol_table_str);
     writeIntoparserLogFile("Total number of lines: " + std::to_string($p.ctx->stop->getLine()));
     writeIntoparserLogFile("Total number of errors: " + std::to_string(syntaxErrorCount) + "\n");
+    assemblyFile << R"(
+new_line proc
+    push ax
+    push dx
+    mov ah,2
+    mov dl,0Dh
+    int 21h
+    mov ah,2
+    mov dl,0Ah
+    int 21h
+    pop dx
+    pop ax
+    ret
+new_line endp
 
+print_output proc  ;prints what is in ax
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    lea si,number
+    mov bx,10
+    add si,4
+    cmp ax,0
+    jnge negate
+print:
+    xor dx,dx
+    div bx
+    mov [si],dl
+    add [si],'0'
+    dec si
+    cmp ax,0
+    jne print
+    inc si
+    lea dx,si
+    mov ah,9
+    int 21h
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+negate:
+    push ax
+    mov ah,2
+    mov dl,'-'
+    int 21h
+    pop ax
+    neg ax
+    jmp print
+print_output endp
+)";
+    assemblyFile << "\nEND MAIN\n";
     if (parserLogFile.is_open())
         parserLogFile.close();
     if (errorFile.is_open())
@@ -732,11 +787,11 @@ declaration_list returns[std::string formatted_text]
             log_rule_to_file("declaration_list : ID LTHIRD CONST_INT RTHIRD", $id->getLine());
             writeIntoparserLogFile($formatted_text + "\n");
             if (st.get_current_scope_id() == 1)
-            { // Global Array
+            {
                 assemblyFile << "    " << $id->getText() << (var_type == "int" ? " DW " : " DD ") << $ci->getText() << " DUP(?)\n";
             }
             else
-            { // Local Array
+            {
                 int element_size = (var_type == "int" ? 2 : 4);
                 int array_size = std::stoi($ci->getText());
                 int total_size = element_size * array_size;
@@ -805,15 +860,58 @@ statement returns[std::string formatted_text]
     log_rule_to_file("statement : FOR LPAREN expression_statement expression_statement expression RPAREN statement", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
 }
-| kw = IF LPAREN e = expression RPAREN s = statement
+| kw = IF LPAREN e = expression RPAREN
 {
+    {
+        assemblyFile << "    CMP AX, 0 ; Check if the condition is false\n";
+        int end_if_label = label_count++;
+        assemblyFile << "    JE L" << end_if_label << "\n";
+        label_stack.push_back(end_if_label);
+    }
+}
+s = statement
+{
+    {
+        int end_if_label = label_stack.back();
+        label_stack.pop_back();
+        assemblyFile << "L" << end_if_label << ":\n";
+    }
+
     $formatted_text = $kw->getText() + "(" + $e.formatted_text + ")" + $s.formatted_text;
     log_rule_to_file("statement : IF LPAREN expression RPAREN statement", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
 }
-| kw = IF LPAREN e = expression RPAREN s1 = statement kw2 = ELSE s2 = statement
+| kw = IF LPAREN e = expression RPAREN
 {
-    $formatted_text = $kw->getText() + "(" + $e.formatted_text + ")" + $s1.formatted_text + $kw2->getText() + " " + $s2.formatted_text;
+    {
+        assemblyFile << "    CMP AX, 0 ; Check if the condition is false\n";
+        int else_label = label_count++;
+        int end_label = label_count++;
+        assemblyFile << "    JE L" << else_label << "\n";
+        label_stack.push_back(end_label);
+        label_stack.push_back(else_label);
+    }
+}
+s1 = statement kw2 = ELSE
+{
+    {
+        int else_label = label_stack.back();
+        label_stack.pop_back();
+        int end_label = label_stack.back();
+        assemblyFile << "    JMP L" << end_label << "\n";
+        assemblyFile << "L" << else_label << ":\n";
+    }
+}
+s2 = statement
+{
+    {
+        int end_label = label_stack.back();
+        label_stack.pop_back();
+
+        assemblyFile << "L" << end_label << ":\n";
+    }
+
+    $formatted_text = $kw->getText() + "(" + $e.formatted_text + ")" + $s1.formatted_text + " " + $kw2->getText() + " " + $s2.formatted_text;
     log_rule_to_file("statement : IF LPAREN expression RPAREN statement ELSE statement", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
 }
@@ -826,16 +924,25 @@ statement returns[std::string formatted_text]
 | kw = PRINTLN LPAREN id = ID RPAREN sm = SEMICOLON
 {
     symbol_info *info = st.lookup($id->getText());
-    if (info == nullptr)
+
+    int offset = info->get_offset();
+    if (offset == 0)
     {
-        writeIntoErrorFile(
-            std::string("Error at line ") + std::to_string($id->getLine()) +
-            ": Undeclared variable " + $id->getText() + "\n");
-        writeIntoparserLogFile(
-            std::string("Error at line ") + std::to_string($id->getLine()) +
-            ": Undeclared variable " + $id->getText() + "\n");
-        syntaxErrorCount++;
+        assemblyFile << "    MOV AX, " << $id->getText() << "\n";
     }
+    else
+    {
+        if (offset > 0)
+        {
+            assemblyFile << "    MOV AX, WORD PTR [BP+" << std::to_string(offset) << "]\n";
+        }
+        else
+        {
+            assemblyFile << "    MOV AX, WORD PTR [BP" << std::to_string(offset) << "]\n";
+        }
+    }
+    assemblyFile << "    CALL print_output\n";
+    assemblyFile << "    CALL new_line\n";
     $formatted_text = $kw->getText() + "(" + $id->getText() + ")" + $sm->getText();
     log_rule_to_file("statement : PRINTLN LPAREN ID RPAREN SEMICOLON", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
@@ -925,18 +1032,54 @@ variable returns[std::string formatted_text, std::string variable_name]
 };
 
 expression returns[std::string formatted_text]
-    : l = logic_expression
+    : id = ID LTHIRD idx = expression RTHIRD
 {
-    $formatted_text = $l.formatted_text;
-    log_rule_to_file("expression : logic_expression", $l.ctx->start->getLine());
+    // ACTION 1: After the index ('idx') is evaluated, its value is in AX.
+    // Save it on the stack before we evaluate the right side.
+    assemblyFile << "    PUSH AX\n";
+}
+op = ASSIGNOP rhs = expression
+{
+    // ACTION 2: After the RHS is evaluated, its value is in AX.
+    // The saved index is on the stack.
+    $formatted_text = $id->getText() + "[" + $idx.formatted_text + "]" + $op->getText() + $rhs.formatted_text;
+    log_rule_to_file("expression : ID '[' expression ']' ASSIGNOP expression", $id->getLine());
+
+    assemblyFile << "    POP BX\n";    // Pop the index into BX
+    assemblyFile << "    SHL BX, 1\n"; // Scale index by 2 for WORDs
+
+    symbol_info *info = st.lookup($id->getText());
+    if (info != nullptr)
+    {
+        int offset = info->get_offset();
+        if (offset == 0)
+        { // Global array
+            assemblyFile << "    LEA SI, " << $id->getText() << "\n";
+        }
+        else
+        { // Local array
+            if (offset > 0)
+            {
+                assemblyFile << "    LEA SI, [BP+" << std::to_string(offset) << "]\n";
+            }
+            else
+            {
+                assemblyFile << "    LEA SI, [BP" << std::to_string(offset) << "]\n";
+            }
+        }
+    }
+
+    assemblyFile << "    ADD SI, BX\n";   // Final address is in SI
+    assemblyFile << "    MOV [SI], AX\n"; // Store the RHS value (in AX) at that address
+
     writeIntoparserLogFile($formatted_text + "\n");
 }
-| v = variable op = ASSIGNOP l = logic_expression
+| id = ID op = ASSIGNOP rhs = expression
 {
-    $formatted_text = $v.formatted_text + $op->getText() + $l.formatted_text;
-    log_rule_to_file("expression : variable ASSIGNOP logic_expression", $v.ctx->start->getLine());
+    $formatted_text = $id->getText() + $op->getText() + $rhs.formatted_text;
+    log_rule_to_file("expression : ID ASSIGNOP expression", $id->getLine());
 
-    symbol_info *lhs_info = st.lookup($v.variable_name);
+    symbol_info *lhs_info = st.lookup($id->getText());
     if (lhs_info != nullptr)
     {
         int offset = lhs_info->get_offset();
@@ -944,13 +1087,26 @@ expression returns[std::string formatted_text]
 
         if (offset == 0)
         {
-            assemblyFile << "    MOV " << $v.variable_name << ", AX\n";
+            assemblyFile << "    MOV " << $id->getText() << ", AX\n";
         }
         else
         {
-            assemblyFile << "    MOV " << ptr_type << " [BP" << std::to_string(offset) << "], AX\n";
+            if (offset > 0)
+            {
+                assemblyFile << "    MOV " << ptr_type << " [BP+" << std::to_string(offset) << "], AX\n";
+            }
+            else
+            {
+                assemblyFile << "    MOV " << ptr_type << " [BP" << std::to_string(offset) << "], AX\n";
+            }
         }
     }
+    writeIntoparserLogFile($formatted_text + "\n");
+}
+| l = logic_expression
+{
+    $formatted_text = $l.formatted_text;
+    log_rule_to_file("expression : logic_expression", $l.ctx->start->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
 };
 
@@ -977,13 +1133,9 @@ op = LOGICOP r = rel_expression
         assemblyFile << "    AND AX, BX ; AX = (LHS result) AND (RHS result)\n";
     }
     else
-    {
+    { // ||
         assemblyFile << "    OR AX, BX  ; AX = (LHS result) OR (RHS result)\n";
     }
-
-    assemblyFile << "    CMP AX, 0      ; Compare the result with 0\n";
-    assemblyFile << "    SETNE AL       ; Set AL to 1 if the result is Not Equal to 0, else 0\n";
-    assemblyFile << "    MOVZX AX, AL   ; Zero-extend AL into AX to clean the upper byte\n";
 
     writeIntoparserLogFile($formatted_text + "\n");
 };
@@ -1130,36 +1282,232 @@ unary_expression returns[std::string formatted_text]
 };
 
 factor returns[std::string formatted_text]
-    : v = variable
+    : id = ID LTHIRD e = expression RTHIRD op = INCOP
 {
-    $formatted_text = $v.formatted_text;
-    log_rule_to_file("factor : variable", $v.ctx->start->getLine());
-    writeIntoparserLogFile($formatted_text + "\n");
-    symbol_info *info = st.lookup($v.variable_name);
+    $formatted_text = $id->getText() + "[" + $e.formatted_text + "]" + $op->getText();
+    log_rule_to_file("factor : ID LTHIRD ... RTHIRD INCOP", $id->getLine());
 
+    assemblyFile << "    MOV BX, AX\n";
+    assemblyFile << "    SHL BX, 1\n";
+    symbol_info *info = st.lookup($id->getText());
+    if (info != nullptr)
+    {
+        int offset = info->get_offset();
+        if (offset == 0)
+        {
+            assemblyFile << "    LEA SI, " << $id->getText() << "\n";
+        }
+        else
+        {
+            if (offset > 0)
+            {
+                assemblyFile << "    LEA SI, [BP+" << std::to_string(offset) << "]\n";
+            }
+            else
+            {
+                assemblyFile << "    LEA SI, [BP" << std::to_string(offset) << "]\n";
+            }
+        }
+        assemblyFile << "    ADD SI, BX\n";
+    }
+    assemblyFile << "    MOV AX, [SI]\n";
+    assemblyFile << "    PUSH AX\n";
+    assemblyFile << "    INC WORD PTR [SI]\n";
+    assemblyFile << "    POP AX\n";
+
+    writeIntoparserLogFile($formatted_text + "\n");
+}
+| id = ID LTHIRD e = expression RTHIRD op = DECOP
+{
+    $formatted_text = $id->getText() + "[" + $e.formatted_text + "]" + $op->getText();
+    log_rule_to_file("factor : ID LTHIRD ... RTHIRD DECOP", $id->getLine());
+
+    assemblyFile << "    MOV BX, AX\n";
+    assemblyFile << "    SHL BX, 1\n";
+    symbol_info *info = st.lookup($id->getText());
+    if (info != nullptr)
+    {
+        int offset = info->get_offset();
+        if (offset == 0)
+        {
+            assemblyFile << "    LEA SI, " << $id->getText() << "\n";
+        }
+        else
+        {
+            if (offset > 0)
+            {
+                assemblyFile << "    LEA SI, [BP+" << std::to_string(offset) << "]\n";
+            }
+            else
+            {
+                assemblyFile << "    LEA SI, [BP" << std::to_string(offset) << "]\n";
+            }
+        }
+        assemblyFile << "    ADD SI, BX\n";
+    }
+    assemblyFile << "    MOV AX, [SI]\n";
+    assemblyFile << "    PUSH AX\n";
+    assemblyFile << "    DEC WORD PTR [SI]\n";
+    assemblyFile << "    POP AX\n";
+
+    writeIntoparserLogFile($formatted_text + "\n");
+}
+| id = ID LTHIRD e = expression RTHIRD
+{
+    $formatted_text = $id->getText() + "[" + $e.formatted_text + "]";
+    log_rule_to_file("factor : ID LTHIRD expression RTHIRD", $id->getLine());
+
+    assemblyFile << "    MOV BX, AX\n";
+    assemblyFile << "    SHL BX, 1\n";
+    symbol_info *info = st.lookup($id->getText());
+    if (info != nullptr)
+    {
+        int offset = info->get_offset();
+        if (offset == 0)
+        {
+            assemblyFile << "    LEA SI, " << $id->getText() << "\n";
+        }
+        else
+        {
+            if (offset > 0)
+            {
+                assemblyFile << "    LEA SI, [BP+" << std::to_string(offset) << "]\n";
+            }
+            else
+            {
+                assemblyFile << "    LEA SI, [BP" << std::to_string(offset) << "]\n";
+            }
+        }
+    }
+    assemblyFile << "    ADD SI, BX\n";
+    assemblyFile << "    MOV AX, [SI]\n";
+
+    writeIntoparserLogFile($formatted_text + "\n");
+}
+| id = ID op = INCOP
+{
+    $formatted_text = $id->getText() + $op->getText();
+    log_rule_to_file("factor : ID INCOP", $id->getLine());
+    symbol_info *info = st.lookup($id->getText());
     if (info != nullptr)
     {
         int offset = info->get_offset();
         std::string ptr_type = (info->get_type() == "int") ? "WORD PTR" : "DWORD PTR";
-
         if (offset == 0)
         {
-            assemblyFile << "    MOV AX, " << $v.variable_name << "\n";
+            assemblyFile << "    MOV AX, " << $id->getText() << "\n";
         }
         else
         {
-            assemblyFile << "    MOV AX, " << ptr_type << " [BP" << std::to_string(offset) << "]\n";
+            if (offset > 0)
+            {
+                assemblyFile << "    MOV AX, " << ptr_type << " [BP+" << std::to_string(offset) << "]\n";
+            }
+            else
+            {
+                assemblyFile << "    MOV AX, " << ptr_type << " [BP" << std::to_string(offset) << "]\n";
+            }
         }
+        assemblyFile << "    PUSH AX\n";
+        assemblyFile << "    INC AX\n";
+        if (offset == 0)
+        {
+            assemblyFile << "    MOV " << $id->getText() << ", AX\n";
+        }
+        else
+        {
+            if (offset > 0)
+            {
+                assemblyFile << "    MOV " << ptr_type << " [BP+" << std::to_string(offset) << "], AX\n";
+            }
+            else
+            {
+                assemblyFile << "    MOV " << ptr_type << " [BP" << std::to_string(offset) << "], AX\n";
+            }
+        }
+        assemblyFile << "    POP AX\n";
     }
+    writeIntoparserLogFile($formatted_text + "\n");
+}
+| id = ID op = DECOP
+{
+    $formatted_text = $id->getText() + $op->getText();
+    log_rule_to_file("factor : ID DECOP", $id->getLine());
+    symbol_info *info = st.lookup($id->getText());
+    if (info != nullptr)
+    {
+        int offset = info->get_offset();
+        std::string ptr_type = (info->get_type() == "int") ? "WORD PTR" : "DWORD PTR";
+        if (offset == 0)
+        {
+            assemblyFile << "    MOV AX, " << $id->getText() << "\n";
+        }
+        else
+        {
+            if (offset > 0)
+            {
+                assemblyFile << "    MOV AX, " << ptr_type << " [BP+" << std::to_string(offset) << "]\n";
+            }
+            else
+            {
+                assemblyFile << "    MOV AX, " << ptr_type << " [BP" << std::to_string(offset) << "]\n";
+            }
+        }
+        assemblyFile << "    PUSH AX\n";
+        assemblyFile << "    DEC AX\n";
+        if (offset == 0)
+        {
+            assemblyFile << "    MOV " << $id->getText() << ", AX\n";
+        }
+        else
+        {
+            if (offset > 0)
+            {
+                assemblyFile << "    MOV " << ptr_type << " [BP+" << std::to_string(offset) << "], AX\n";
+            }
+            else
+            {
+                assemblyFile << "    MOV " << ptr_type << " [BP" << std::to_string(offset) << "], AX\n";
+            }
+        }
+        assemblyFile << "    POP AX\n";
+    }
+    writeIntoparserLogFile($formatted_text + "\n");
 }
 | id = ID LPAREN al = argument_list ? RPAREN
 {
     std::string arg_text = ($al.ctx != nullptr) ? $al.formatted_text : "";
     $formatted_text = $id->getText() + "(" + arg_text + ")";
     log_rule_to_file("factor : ID LPAREN argument_list RPAREN", $id->getLine());
-
     assemblyFile << "    CALL " << $id->getText() << "\n";
     writeIntoparserLogFile($formatted_text + "\n\n");
+}
+| id = ID
+{
+    $formatted_text = $id->getText();
+    log_rule_to_file("factor : ID", $id->getLine());
+    writeIntoparserLogFile($formatted_text + "\n");
+    symbol_info *info = st.lookup($id->getText());
+    if (info != nullptr)
+    {
+        int offset = info->get_offset();
+        std::string ptr_type = (info->get_type() == "int") ? "WORD PTR" : "DWORD PTR";
+        if (offset == 0)
+        {
+            assemblyFile << "    MOV AX, " << $id->getText() << "\n";
+        }
+        else
+        {
+            if (offset > 0)
+            {
+                assemblyFile << "    MOV AX, " << ptr_type << " [BP+" << std::to_string(offset) << "]\n";
+            }
+            else
+            {
+                assemblyFile << "    MOV AX, " << ptr_type << " [BP" << std::to_string(offset) << "]\n";
+            }
+        }
+    }
 }
 | LPAREN e = expression RPAREN
 {
@@ -1185,74 +1533,6 @@ factor returns[std::string formatted_text]
 
     assemblyFile << "    ; Loading float as integer for now. True floats require FPU instructions.\n";
     assemblyFile << "    MOV AX, " << $c->getText() << "\n";
-}
-| v = variable op = INCOP
-{
-    $formatted_text = $v.formatted_text + $op->getText();
-    log_rule_to_file("factor : variable INCOP", $v.ctx->start->getLine());
-
-    symbol_info *info = st.lookup($v.variable_name);
-    if (info != nullptr)
-    {
-        int offset = info->get_offset();
-        std::string ptr_type = (info->get_type() == "int") ? "WORD PTR" : "DWORD PTR";
-
-        if (offset == 0)
-        {
-            assemblyFile << "    MOV AX, " << $v.variable_name << "\n";
-        }
-        else
-        {
-            assemblyFile << "    MOV AX, " << ptr_type << " [BP" << std::to_string(offset) << "]\n";
-        }
-
-        assemblyFile << "    PUSH AX\n";
-        assemblyFile << "    INC AX\n";
-        if (offset == 0)
-        { 
-            assemblyFile << "    MOV " << $v.variable_name << ", AX\n";
-        }
-        else
-        {
-            assemblyFile << "    MOV " << ptr_type << " [BP" << std::to_string(offset) << "], AX\n";
-        }
-        assemblyFile << "    POP AX\n";
-    }
-
-    writeIntoparserLogFile($formatted_text + "\n");
-}
-| v = variable op = DECOP
-{
-    $formatted_text = $v.formatted_text + $op->getText();
-    log_rule_to_file("factor : variable DECOP", $v.ctx->start->getLine());
-    symbol_info *info = st.lookup($v.variable_name);
-    if (info != nullptr)
-    {
-        int offset = info->get_offset();
-        std::string ptr_type = (info->get_type() == "int") ? "WORD PTR" : "DWORD PTR";
-
-        if (offset == 0)
-        {
-            assemblyFile << "    MOV AX, " << $v.variable_name << "\n";
-        }
-        else
-        {
-            assemblyFile << "    MOV AX, " << ptr_type << " [BP" << std::to_string(offset) << "]\n";
-        }
-
-        assemblyFile << "    PUSH AX\n";
-        assemblyFile << "    DEC AX\n";
-        if (offset == 0)
-        {
-            assemblyFile << "    MOV " << $v.variable_name << ", AX\n";
-        }
-        else
-        {
-            assemblyFile << "    MOV " << ptr_type << " [BP" << std::to_string(offset) << "], AX\n";
-        }
-        assemblyFile << "    POP AX\n";
-    }
-    writeIntoparserLogFile($formatted_text + "\n");
 };
 
 argument_list returns[std::string formatted_text]
