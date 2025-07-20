@@ -13,18 +13,18 @@ foo PROC
     PUSH AX
     MOV AX, WORD PTR [BP+6]
     POP BX
-    ADD AX, BX ; AX = RHS + LHS
+    ADD AX, BX
     PUSH AX
     MOV AX, 5
     POP BX
-    CMP BX, AX ; Compare LHS (BX) with RHS (AX)
-    JLE L0 ; Jump on true
-    MOV AX, 0           ; False case
+    CMP BX, AX
+    JLE L0
+    MOV AX, 0
     JMP L1
 L0:
-    MOV AX, 1           ; True case
+    MOV AX, 1
 L1:
-    CMP AX, 0 ; Check if the condition is false
+    CMP AX, 0
     JE L2
     MOV AX, 7
     MOV SP, BP

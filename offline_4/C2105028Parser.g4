@@ -52,7 +52,7 @@ options
     {
         if (is_unreachable)
         {
-            return; // Skip writing code if we are in an unreachable state
+            return;
         }
         if (buffer_mode)
         {
@@ -861,15 +861,10 @@ statement returns[std::string formatted_text]
           e1 = expression_statement
 {
     {
-        // 1. Create labels for the start and end of the loop.
         int start_label = label_count++;
         int end_label = label_count++;
 
-        // 2. Place the START label.
         writeAsm("L" + std::to_string(start_label) + ":\n");
-
-        // 3. Push BOTH labels onto the stack to be used by later actions.
-        // Order is important: end label, then start label.
         label_stack.push_back(end_label);
         label_stack.push_back(start_label);
     }
@@ -877,43 +872,29 @@ statement returns[std::string formatted_text]
 e2 = expression_statement
 {
     {
-        // 4. Test the condition.
         writeAsm("    CMP AX, 0\n");
-
-        // Peek at the end_label (it's second from the top of the stack).
         int end_label = label_stack.at(label_stack.size() - 2);
         writeAsm("    JE L" + std::to_string(end_label) + "\n");
-
-        // 5. Turn on buffer mode to capture the increment expression's code.
         buffer_mode = true;
         code_buffer.str("");
     }
 }
 e3 = expression
 {
-    // 6. Turn off buffer mode.
     buffer_mode = false;
 }
 RPAREN s = statement
 {
     {
-        // 7. Retrieve the labels from the stack.
         int start_label = label_stack.back();
         label_stack.pop_back();
         int end_label = label_stack.back();
         label_stack.pop_back();
-
-        // 8. Write the buffered increment code.
         writeAsm(code_buffer.str());
-
-        // 9. Jump back to the start of the loop.
         writeAsm("    JMP L" + std::to_string(start_label) + "\n");
-
-        // 10. Place the END label.
         writeAsm("L" + std::to_string(end_label) + ":\n");
     }
 
-    // Logging/formatting
     $formatted_text = $kw->getText() + "(" + $e1.formatted_text + $e2.formatted_text + $e3.formatted_text + ")" + $s.formatted_text;
     log_rule_to_file("statement : FOR LPAREN ... RPAREN statement", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
@@ -921,7 +902,7 @@ RPAREN s = statement
 | kw = IF LPAREN e = expression RPAREN
 {
     {
-        writeAsm("    CMP AX, 0 ; Check if the condition is false\n");
+        writeAsm("    CMP AX, 0\n");
         int end_if_label = label_count++;
         writeAsm("    JE L" + std::to_string(end_if_label) + "\n");
         label_stack.push_back(end_if_label);
@@ -942,7 +923,7 @@ s = statement
 | kw = IF LPAREN e = expression RPAREN
 {
     {
-        writeAsm("    CMP AX, 0 ; Check if the condition is false\n");
+        writeAsm("    CMP AX, 0\n");
         int else_label = label_count++;
         int end_label = label_count++;
         writeAsm("    JE L" + std::to_string(else_label) + "\n");
@@ -976,15 +957,9 @@ s2 = statement
 | kw = WHILE
 {
     {
-        // ACTION 1: Before the condition
-        // Create start and end labels for the loop.
         int start_label = label_count++;
         int end_label = label_count++;
-
-        // Place the start label in the code.
         writeAsm("L" + std::to_string(start_label) + ":\n");
-
-        // Push the labels onto the stack for later actions to use.
         label_stack.push_back(end_label);
         label_stack.push_back(start_label);
     }
@@ -992,12 +967,7 @@ s2 = statement
 LPAREN e = expression RPAREN
 {
     {
-        // ACTION 2: After the condition
-        // The result of the expression is in AX. Test if it's false.
         writeAsm("    CMP AX, 0\n");
-
-        // Peek at the end label (it's second-from-the-top of the stack)
-        // and jump to it if the condition is false.
         int end_label = label_stack.at(label_stack.size() - 2);
         writeAsm("    JE L" + std::to_string(end_label) + "\n");
     }
@@ -1005,20 +975,14 @@ LPAREN e = expression RPAREN
 s = statement
 {
     {
-        // ACTION 3: After the loop body
-        // Retrieve the start and end labels from the stack.
         int start_label = label_stack.back();
         label_stack.pop_back();
         int end_label = label_stack.back();
         label_stack.pop_back();
-
-        // Generate the unconditional jump back to the start of the loop.
         writeAsm("    JMP L" + std::to_string(start_label) + "\n");
-        // Place the end label.
         writeAsm("L" + std::to_string(end_label) + ":\n");
     }
 
-    // Logging/formatting
     $formatted_text = $kw->getText() + "(" + $e.formatted_text + ")" + $s.formatted_text;
     log_rule_to_file("statement : WHILE LPAREN expression RPAREN statement", $kw->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
@@ -1137,14 +1101,10 @@ variable returns[std::string formatted_text, std::string variable_name]
 expression returns[std::string formatted_text]
     : id = ID LTHIRD idx = expression RTHIRD
 {
-    // ACTION 1: After the index ('idx') is evaluated, its value is in AX.
-    // Save it on the stack before we evaluate the right side.
     writeAsm("    PUSH AX\n");
 }
 op = ASSIGNOP rhs = expression
 {
-    // ACTION 2: After the RHS is evaluated, its value is in AX.
-    // The saved index is on the stack.
     $formatted_text = $id->getText() + "[" + $idx.formatted_text + "]" + $op->getText() + $rhs.formatted_text;
     log_rule_to_file("expression : ID '[' expression ']' ASSIGNOP expression", $id->getLine());
 
@@ -1156,11 +1116,11 @@ op = ASSIGNOP rhs = expression
     {
         int offset = info->get_offset();
         if (offset == 0)
-        { // Global array
+        {
             writeAsm("    LEA SI, " + $id->getText() + "\n");
         }
         else
-        { // Local array
+        {
             if (offset > 0)
             {
                 writeAsm("    LEA SI, [BP+" + std::to_string(offset) + "]\n");
@@ -1233,11 +1193,11 @@ op = LOGICOP r = rel_expression
 
     if ($op->getText() == "&&")
     {
-        writeAsm("    AND AX, BX ; AX = (LHS result) AND (RHS result)\n");
+        writeAsm("    AND AX, BX\n");
     }
     else
-    { // ||
-        writeAsm("    OR AX, BX  ; AX = (LHS result) OR (RHS result)\n");
+    {
+        writeAsm("    OR AX, BX\n");
     }
 
     writeIntoparserLogFile($formatted_text + "\n");
@@ -1260,7 +1220,7 @@ op = RELOP s2 = simple_expression
     log_rule_to_file("rel_expression : simple_expression RELOP simple_expression", $s1.ctx->start->getLine());
 
     writeAsm("    POP BX\n");
-    writeAsm("    CMP BX, AX ; Compare LHS (BX) with RHS (AX)\n");
+    writeAsm("    CMP BX, AX\n");
 
     std::string op_text = $op->getText();
     std::string jump_instruction;
@@ -1281,13 +1241,13 @@ op = RELOP s2 = simple_expression
     int true_label = label_count++;
     int end_label = label_count++;
 
-    writeAsm("    " + jump_instruction + " L" + std::to_string(true_label) + " ; Jump on true\n");
+    writeAsm("    " + jump_instruction + " L" + std::to_string(true_label) + "\n");
 
-    writeAsm("    MOV AX, 0           ; False case\n");
+    writeAsm("    MOV AX, 0\n");
     writeAsm("    JMP L" + std::to_string(end_label) + "\n");
 
     writeAsm("L" + std::to_string(true_label) + ":\n");
-    writeAsm("    MOV AX, 1           ; True case\n");
+    writeAsm("    MOV AX, 1\n");
 
     writeAsm("L" + std::to_string(end_label) + ":\n");
 
@@ -1313,12 +1273,12 @@ op = ADDOP t = term
     writeAsm("    POP BX\n");
     if ($op->getText() == "+")
     {
-        writeAsm("    ADD AX, BX ; AX = RHS + LHS\n");
+        writeAsm("    ADD AX, BX\n");
     }
     else
     {
         writeAsm("    SUB BX, AX\n");
-        writeAsm("    MOV AX, BX ; Move result back to AX\n");
+        writeAsm("    MOV AX, BX\n");
     }
 
     writeIntoparserLogFile($formatted_text + "\n");
@@ -1343,16 +1303,16 @@ op = MULOP u = unary_expression
     writeAsm("    POP BX\n");
     if ($op->getText() == "*")
     {
-        writeAsm("    IMUL BX  ; AX = AX * BX\n");
+        writeAsm("    IMUL BX\n");
     }
     else
     {
-        writeAsm("    XCHG AX, BX ; AX has LHS(BX), BX has RHS(AX)\n");
-        writeAsm("    CWD         ; Extend sign of AX into DX for division\n");
-        writeAsm("    IDIV BX     ; AX = DX:AX / BX\n");
+        writeAsm("    XCHG AX, BX\n");
+        writeAsm("    CWD\n");
+        writeAsm("    IDIV BX\n");
         if ($op->getText() == "%")
         {
-            writeAsm("    MOV AX, DX ; For modulus, the result is the remainder in DX\n");
+            writeAsm("    MOV AX, DX\n");
         }
     }
 
@@ -1366,7 +1326,7 @@ unary_expression returns[std::string formatted_text]
     log_rule_to_file("unary_expression : ADDOP unary_expression", $op->getLine());
     if ($op->getText() == "-")
     {
-        writeAsm("    NEG AX ; Negate the value in AX\n");
+        writeAsm("    NEG AX\n");
     }
 
     writeIntoparserLogFile($formatted_text + "\n");
@@ -1658,7 +1618,6 @@ factor returns[std::string formatted_text]
     writeIntoparserLogFile($formatted_text + "\n");
     data_type = "float";
 
-    writeAsm("    ; Loading float as integer for now. True floats require FPU instructions.\n");
     writeAsm("    MOV AX, " + $c->getText() + "\n");
 };
 
@@ -1677,15 +1636,12 @@ argument_list returns[std::string formatted_text]
 arguments returns[std::string formatted_text]
     : l = logic_expression COMMA a = arguments
 {
-    // find argument offset
     symbol_info *info = st.lookup($l.formatted_text);
     int offset = 0;
     if (info != nullptr)
     {
         offset = info->get_offset();
     }
-    // make the move
-    //  ACTION: After the logic expression is evaluated, its value is in AX.
     if (offset == 0)
     {
         writeAsm("    MOV " + $l.formatted_text + ", AX\n");
@@ -1708,15 +1664,12 @@ arguments returns[std::string formatted_text]
 }
 | l = logic_expression
 {
-    // find argument offset
     symbol_info *info = st.lookup($l.formatted_text);
     int offset = 0;
     if (info != nullptr)
     {
         offset = info->get_offset();
     }
-    // make the move
-    //  ACTION: After the logic expression is evaluated, its value is in AX.
     if (offset == 0)
     {
         writeAsm("    MOV " + $l.formatted_text + ", AX\n");

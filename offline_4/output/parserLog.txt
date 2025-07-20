@@ -380,16 +380,44 @@ Line 5: expression : logic_expression
 
 foo(a-2,b-1)+2*foo(a-1,b-2)
 
+Line 5: factor : LPAREN expression RPAREN
+
+(foo(a-2,b-1)+2*foo(a-1,b-2))
+
+Line 5: unary_expression : factor
+
+(foo(a-2,b-1)+2*foo(a-1,b-2))
+
+Line 5: term : unary_expression
+
+(foo(a-2,b-1)+2*foo(a-1,b-2))
+
+Line 5: simple_expression : term
+
+(foo(a-2,b-1)+2*foo(a-1,b-2))
+
+Line 5: rel_expression : simple_expression
+
+(foo(a-2,b-1)+2*foo(a-1,b-2))
+
+Line 5: logic_expression : rel_expression
+
+(foo(a-2,b-1)+2*foo(a-1,b-2))
+
+Line 5: expression : logic_expression
+
+(foo(a-2,b-1)+2*foo(a-1,b-2))
+
 Line 5: statement : RETURN expression SEMICOLON
 
-return foo(a-2,b-1)+2*foo(a-1,b-2);
+return (foo(a-2,b-1)+2*foo(a-1,b-2));
 
 Line 5: statements : statements statement
 
 if(a+b<=5){
 return 7;
 }
-return foo(a-2,b-1)+2*foo(a-1,b-2);
+return (foo(a-2,b-1)+2*foo(a-1,b-2));
 
 Line 6: compound_statement : LCURL RCURL
 
@@ -397,7 +425,7 @@ Line 6: compound_statement : LCURL RCURL
 if(a+b<=5){
 return 7;
 }
-return foo(a-2,b-1)+2*foo(a-1,b-2);
+return (foo(a-2,b-1)+2*foo(a-1,b-2));
 }
 
 ScopeTable # 2
@@ -412,7 +440,7 @@ int foo(int a, int b){
 if(a+b<=5){
 return 7;
 }
-return foo(a-2,b-1)+2*foo(a-1,b-2);
+return (foo(a-2,b-1)+2*foo(a-1,b-2));
 }
 
 Line 6: unit : func_definition
@@ -421,7 +449,7 @@ int foo(int a, int b){
 if(a+b<=5){
 return 7;
 }
-return foo(a-2,b-1)+2*foo(a-1,b-2);
+return (foo(a-2,b-1)+2*foo(a-1,b-2));
 }
 
 Line 1: program : unit
@@ -430,7 +458,7 @@ int foo(int a, int b){
 if(a+b<=5){
 return 7;
 }
-return foo(a-2,b-1)+2*foo(a-1,b-2);
+return (foo(a-2,b-1)+2*foo(a-1,b-2));
 }
 
 Line 9: type_specifier : INT
@@ -764,7 +792,7 @@ int foo(int a, int b){
 if(a+b<=5){
 return 7;
 }
-return foo(a-2,b-1)+2*foo(a-1,b-2);
+return (foo(a-2,b-1)+2*foo(a-1,b-2));
 }
 int main(){
 int i,j,k;

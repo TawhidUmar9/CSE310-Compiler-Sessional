@@ -21,6 +21,7 @@ Line# 3: Token <CONST_INT> Lexeme 7
 Line# 3: Token <SEMICOLON> Lexeme ;
 Line# 4: Token <RCURL> Lexeme }
 Line# 5: Token <RETURN> Lexeme return
+Line# 5: Token <LPAREN> Lexeme (
 Line# 5: Token <ID> Lexeme foo
 Line# 5: Token <LPAREN> Lexeme (
 Line# 5: Token <ID> Lexeme a
@@ -43,6 +44,7 @@ Line# 5: Token <COMMA> Lexeme ,
 Line# 5: Token <ID> Lexeme b
 Line# 5: Token <ADDOP> Lexeme -
 Line# 5: Token <CONST_INT> Lexeme 2
+Line# 5: Token <RPAREN> Lexeme )
 Line# 5: Token <RPAREN> Lexeme )
 Line# 5: Token <SEMICOLON> Lexeme ;
 Line# 6: Token <RCURL> Lexeme }
