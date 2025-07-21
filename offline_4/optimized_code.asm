@@ -4,7 +4,8 @@
 	CR EQU 0DH
 	LF EQU 0AH
 number DB 6 DUP('$') ;
-    w DW 10 DUP(?)
+    i DW ?
+    j DW ?
 .CODE
 
 main PROC
@@ -12,161 +13,110 @@ main PROC
     MOV DS, AX
     PUSH BP
     MOV BP, SP
-    SUB SP, 2 ; i at [BP-2]
-    SUB SP, 20 ; Array x starts at [BP-22]
-    MOV AX, 0
+    SUB SP, 2 ; k at [BP-2]
+    SUB SP, 2 ; ll at [BP-4]
+    SUB SP, 2 ; m at [BP-6]
+    SUB SP, 2 ; n at [BP-8]
+    SUB SP, 2 ; o at [BP-10]
+    SUB SP, 2 ; p at [BP-12]
+    MOV AX, 1
+    MOV i, AX
+    MOV AX, i
+    CALL print_output
+    CALL new_line
+    MOV AX, 5
+    PUSH AX
+    MOV AX, 8
+    POP BX
+    ADD AX, BX
+    MOV j, AX
+    MOV AX, j
+    CALL print_output
+    CALL new_line
+    MOV AX, i
     PUSH AX
     MOV AX, 2
-    NEG AX
+    PUSH AX
+    MOV AX, j
     POP BX
-    SHL BX, 1
-    LEA SI, w
-    ADD SI, BX
-    MOV [SI], AX
-    MOV AX, 0
-    PUSH AX
-    MOV AX, 0
-    MOV BX, AX
-    SHL BX, 1
-    LEA SI, w
-    ADD SI, BX
-    MOV AX, [SI]
-    POP BX
-    SHL BX, 1
-    LEA SI, [BP-22]
-    ADD SI, BX
-    MOV [SI], AX
-    MOV AX, 0
-    MOV BX, AX
-    SHL BX, 1
-    LEA SI, [BP-22]
-    ADD SI, BX
-    MOV AX, [SI]
-    MOV WORD PTR [BP-2], AX
-    MOV AX, WORD PTR [BP-2]
-    CALL print_output
-    CALL new_line
-    MOV AX, 1
-    PUSH AX
-    MOV AX, 0
-    MOV BX, AX
-    SHL BX, 1
-    LEA SI, w
-    ADD SI, BX
-    MOV AX, [SI]
-    PUSH AX
-    INC WORD PTR [SI]
-    POP AX
-    POP BX
-    SHL BX, 1
-    LEA SI, [BP-22]
-    ADD SI, BX
-    MOV [SI], AX
-    MOV AX, 1
-    MOV BX, AX
-    SHL BX, 1
-    LEA SI, [BP-22]
-    ADD SI, BX
-    MOV AX, [SI]
-    MOV WORD PTR [BP-2], AX
-    MOV AX, WORD PTR [BP-2]
-    CALL print_output
-    CALL new_line
-    MOV AX, 0
-    MOV BX, AX
-    SHL BX, 1
-    LEA SI, w
-    ADD SI, BX
-    MOV AX, [SI]
-    MOV WORD PTR [BP-2], AX
-    MOV AX, WORD PTR [BP-2]
-    CALL print_output
-    CALL new_line
-    MOV AX, WORD PTR [BP-2]
-    PUSH AX
-    MOV AX, 0
+    IMUL BX
     POP BX
     ADD AX, BX
     MOV WORD PTR [BP-2], AX
     MOV AX, WORD PTR [BP-2]
-    PUSH AX
-    MOV AX, 0
-    POP BX
-    SUB BX, AX
-    MOV AX, BX
-    MOV WORD PTR [BP-2], AX
-    MOV AX, WORD PTR [BP-2]
-    PUSH AX
-    MOV AX, 1
-    POP BX
-    IMUL BX
-    MOV WORD PTR [BP-2], AX
-    MOV AX, WORD PTR [BP-2]
     CALL print_output
     CALL new_line
     MOV AX, WORD PTR [BP-2]
     PUSH AX
-    MOV AX, 0
+    MOV AX, 9
+    POP BX
+    XCHG AX, BX
+    CWD
+    IDIV BX
+    MOV AX, DX
+    MOV WORD PTR [BP-6], AX
+    MOV AX, WORD PTR [BP-6]
+    CALL print_output
+    CALL new_line
+    MOV AX, WORD PTR [BP-6]
+    PUSH AX
+    MOV AX, WORD PTR [BP-4]
     POP BX
     CMP BX, AX
-    JG L0
+    JLE L0
     MOV AX, 0
     JMP L1
 L0:
     MOV AX, 1
 L1:
-    CMP AX, 1
-    JE L2
-    MOV AX, WORD PTR [BP-2]
+    MOV WORD PTR [BP-8], AX
+    MOV AX, WORD PTR [BP-8]
+    CALL print_output
+    CALL new_line
+    MOV AX, i
     PUSH AX
-    MOV AX, 10
+    MOV AX, j
     POP BX
     CMP BX, AX
-    JL L3
+    JNE L2
     MOV AX, 0
-    JMP L4
-L3:
-    MOV AX, 1
-L4:
+    JMP L3
 L2:
-    CMP AX, 1
-    JE L5
-    MOV AX, WORD PTR [BP-2]
-    PUSH AX
-    MOV AX, 0
-    POP BX
-    CMP BX, AX
-    JL L6
-    MOV AX, 0
-    JMP L7
-L6:
     MOV AX, 1
-L7:
-    CMP AX, 1
-    JE L8
-    MOV AX, WORD PTR [BP-2]
+L3:
+    MOV WORD PTR [BP-10], AX
+    MOV AX, WORD PTR [BP-10]
+    CALL print_output
+    CALL new_line
+    MOV AX, WORD PTR [BP-8]
     PUSH AX
-    MOV AX, 10
+    MOV AX, WORD PTR [BP-10]
+    POP BX
+    OR AX, BX
+    MOV WORD PTR [BP-12], AX
+    MOV AX, WORD PTR [BP-12]
+    CALL print_output
+    CALL new_line
+    MOV AX, WORD PTR [BP-8]
+    PUSH AX
+    MOV AX, WORD PTR [BP-10]
+    POP BX
+    AND AX, BX
+    MOV WORD PTR [BP-12], AX
+    MOV AX, WORD PTR [BP-12]
+    CALL print_output
+    CALL new_line
+    MOV AX, WORD PTR [BP-12]
+    PUSH AX
+    INC AX
+    MOV WORD PTR [BP-12], AX
+    POP AX
+    MOV AX, WORD PTR [BP-12]
+    CALL print_output
+    CALL new_line
+    MOV AX, WORD PTR [BP-12]
     NEG AX
-    POP BX
-    CMP BX, AX
-    JG L9
-    MOV AX, 0
-    JMP L10
-L9:
-    MOV AX, 1
-L10:
-L8:
-L5:
-    CMP AX, 0
-    JE L11
-    MOV AX, 100
     MOV WORD PTR [BP-2], AX
-    JMP L12
-L11:
-    MOV AX, 200
-    MOV WORD PTR [BP-2], AX
-L12:
     MOV AX, WORD PTR [BP-2]
     CALL print_output
     CALL new_line
