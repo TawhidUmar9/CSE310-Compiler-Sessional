@@ -1182,27 +1182,39 @@ logic_expression returns[std::string formatted_text]
 }
 | l = rel_expression
 {
-    writeAsm("    PUSH AX\n");
-}
-op = LOGICOP r = rel_expression
-{
-    $formatted_text = $l.formatted_text + $op->getText() + $r.formatted_text;
-    log_rule_to_file("logic_expression : rel_expression LOGICOP rel_expression", $l.ctx->start->getLine());
-
-    writeAsm("    POP BX\n");
-
-    if ($op->getText() == "&&")
+    if ($op.text == "&&")
     {
-        writeAsm("    AND AX, BX\n");
+        writeAsm("    CMP AX, 0\n");
+        int false_label = label_count++;
+        writeAsm("    JE L" + std::to_string(false_label) + "\n");
+        label_stack.push_back(false_label);
     }
     else
     {
-        writeAsm("    OR AX, BX\n");
+        writeAsm("    CMP AX, 1\n");
+        int true_label = label_count++;
+        writeAsm("    JE L" + std::to_string(true_label) + "\n");
+        label_stack.push_back(true_label);
+    }
+}
+op = LOGICOP r = rel_expression
+{
+    int short_circuit_label = label_stack.back();
+    label_stack.pop_back();
+
+    if ($op.text == "&&")
+    {
+        writeAsm("L" + std::to_string(short_circuit_label) + ":\n");
+    }
+    else
+    {
+        writeAsm("L" + std::to_string(short_circuit_label) + ":\n");
     }
 
+    $formatted_text = $l.formatted_text + $op->getText() + $r.formatted_text;
+    log_rule_to_file("logic_expression : rel_expression LOGICOP rel_expression", $l.ctx->start->getLine());
     writeIntoparserLogFile($formatted_text + "\n");
 };
-
 rel_expression returns[std::string formatted_text]
     : s = simple_expression
 {
