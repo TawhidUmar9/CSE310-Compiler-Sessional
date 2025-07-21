@@ -59,7 +59,6 @@ g PROC
     SUB SP, 2 ; x at [BP-2]
     SUB SP, 2 ; i at [BP-4]
     MOV AX, WORD PTR [BP+4]
-    MOV AX, WORD PTR [BP+4]
     PUSH AX
     CALL f
     ADD SP, 2
@@ -149,8 +148,6 @@ main PROC
     MOV WORD PTR [BP-2], AX
     MOV AX, 2
     MOV WORD PTR [BP-4], AX
-    MOV AX, WORD PTR [BP-2]
-    MOV AX, WORD PTR [BP-4]
     MOV AX, WORD PTR [BP-4]
     PUSH AX
     MOV AX, WORD PTR [BP-2]
