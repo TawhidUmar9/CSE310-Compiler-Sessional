@@ -1182,10 +1182,31 @@ logic_expression returns[std::string formatted_text]
 }
 | l = rel_expression
 {
+
     writeAsm("    PUSH AX\n");
+    writeAsm("    POP AX\n"); // Ensure AX is ready for the next operation
+    // compare with 0 for short circuit evaluation
+    writeAsm("    CMP AX, 0\n");
 }
-op = LOGICOP r = rel_expression
+op = LOGICOP
 {
+
+    // create the lable for jump
+    int true_label = label_count++;
+    int end_label = label_count++;
+
+    if ($op->getText() == "||")
+    {
+        writeAsm("    JNE L" + std::to_string(true_label) + "\n");
+        writeAsm("    MOV AX, 0\n");
+        writeAsm("    JMP L" + std::to_string(end_label) + "\n");
+        writeAsm("L" + std::to_string(true_label) + ":\n");
+        writeAsm("    MOV AX, 1\n");
+    }
+}
+r = rel_expression
+{
+
     $formatted_text = $l.formatted_text + $op->getText() + $r.formatted_text;
     log_rule_to_file("logic_expression : rel_expression LOGICOP rel_expression", $l.ctx->start->getLine());
 
@@ -1199,7 +1220,7 @@ op = LOGICOP r = rel_expression
     {
         writeAsm("    OR AX, BX\n");
     }
-
+    writeAsm("L" + std::to_string(end_label) + ":\n");
     writeIntoparserLogFile($formatted_text + "\n");
 };
 rel_expression returns[std::string formatted_text]
