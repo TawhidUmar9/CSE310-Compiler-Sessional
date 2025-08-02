@@ -1,60 +1,50 @@
-🛠️ CSE310 Compiler
+# 🛠️ CSE310 Compiler
 
-A full compiler for a subset of the C programming language, built as part of the CSE310: Compiler Design course. This project implements the complete compilation pipeline—from tokenizing to code generation—with a strong focus on educational clarity and modular design.
-Features
+A full compiler for a subset of the C programming language, built as part of the **CSE310: Compiler Design** course. This project implements the complete compilation pipeline—from tokenizing to code generation—with a strong focus on **educational clarity** and **modular design**.
 
-    Symbol Table implemented in modern C++
-    Lexical Analysis using Flex (yyFlex)
-    Parsing with ANTLR4 (C++ implementation)
-    Intermediate Code Generation (ICG) using ANTLR visitors
-    Final Code Output in x86 Assembly
-    Supports generation of .asm files executable in emulators (e.g. EMU8086 / DOSBox)
+---
 
-Compilation Pipeline
+## ✨ Features
 
-Input C (subset)
-     │
-     ▼
-Lexical Analyzer (Flex)
-     │
-     ▼
-   Tokens
-     │
-     ▼
-Parser (ANTLR4)
-     │
-     ▼
-Abstract Syntax Tree (AST)
-     │
-     ▼
-Symbol Table Construction (C++)
-     │
-     ▼
-Semantic Analysis & ICG (ANTLR Visitor)
-     │
-     ▼
-x86 Assembly Output (.asm)
+- **Symbol Table** implemented in modern C++
+- **Lexical Analysis** using Flex (yyFlex)
+- **Parsing** with ANTLR4 (C++ implementation)
+- **Intermediate Code Generation (ICG)** using ANTLR visitors
+- **Final Code Output** in x86 Assembly
+- Supports generation of `.asm` files executable in emulators (e.g., **EMU8086**, **DOSBox**)
 
-Getting Started
 
-    Clone the repository
-    Put your input file inside ICG/input
-    Follow this pdf to setup antlr4 inside a venv
-    Activate the venv
-    Compile using
+## 🚀 Getting Started
 
-bash run-script.sh input/input.c
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/your-username/cse310-compiler.git
+   cd cse310-compiler
 
-    The output assembly is in ICG/output/code.asm
-    This assembly can be run in EMU8086
-    Clear the output and other files using
+    Set up ANTLR4 (C++ target):
 
-bash clean-script.sh
+        Follow this guide to install ANTLR4 in a virtual environment.
 
-Example
+    Activate the virtual environment:
 
-Here's a simple C-like program compiled using our compiler:
-Input (C-like Source Code)
+source antlr-venv/bin/activate
+
+Put your C-like source code inside ICG/input/ folder, for example:
+
+ICG/input/input.txt
+
+Run the compiler:
+
+./run-script.sh input/input.txt
+
+Check output:
+The generated x86 Assembly will be located at:
+
+ICG optimized_code.asm
+---
+
+🧪 Example
+✅ Input (C-like Source Code)
 
 int main() {
     int a = 5;
@@ -63,8 +53,8 @@ int main() {
     println(c);
 }
 
-Output (x8086 Assembly)
-
+🧾 Output (.asm - x86 Assembly)
+```
 .MODEL SMALL
 .STACK 1000H
 .DATA
@@ -93,7 +83,6 @@ main PROC
     MOV AX, [BP - 6]
     CALL print_output
     CALL new_line
-:
     ADD SP, 6
     POP BP
     MOV AX, 4CH
@@ -106,22 +95,22 @@ print_output proc
     push cx
     push dx
     push si
-    lea si,number
-    mov bx,10
-    add si,4
-    cmp ax,0
+    lea si, number
+    mov bx, 10
+    add si, 4
+    cmp ax, 0
     jnge negate
 print:
-    xor dx,dx
+    xor dx, dx
     div bx
-    mov [si],dl
-    add [si],'0'
+    mov [si], dl
+    add [si], '0'
     dec si
-    cmp ax,0
+    cmp ax, 0
     jne print
     inc si
-    lea dx,si
-    mov ah,9
+    lea dx, si
+    mov ah, 9
     int 21h
     pop si
     pop dx
@@ -131,8 +120,8 @@ print:
     ret
 negate:
     push ax
-    mov ah,2
-    mov dl,'-'
+    mov ah, 2
+    mov dl, '-'
     int 21h
     pop ax
     neg ax
@@ -142,11 +131,11 @@ print_output endp
 new_line proc
     push ax
     push dx
-    mov ah,2
-    mov dl,0Dh
+    mov ah, 2
+    mov dl, 0Dh
     int 21h
-    mov ah,2
-    mov dl,0Ah
+    mov ah, 2
+    mov dl, 0Ah
     int 21h
     pop dx
     pop ax
@@ -154,22 +143,21 @@ new_line proc
 new_line endp
 
 END main
+```
+📚 What I Learned
 
-What I Learned
+Implementing a multi-stage compiler with real tools (Flex, ANTLR, x86)
+- Designing grammar rules and resolving ambiguities
+- Managing memory and scopes using custom symbol tables
+- Generating working 8086 assembly code for real emulators
+- Writing automation scripts to streamline the toolchain
 
-    Implementing a multi-stage compiler with real tools (Flex, ANTLR, x86)
-    Designing grammar rules and resolving ambiguities
-    Managing memory and scopes using custom symbol tables
-    Generating working 8086 assembly code for real emulators
-    Writing automation scripts to streamline the toolchain
-
-Acknowledgements
+🙏 Acknowledgements
 
 This project would not have been possible without the knowledge, support, and guidance of the following individuals and communities:
 
-    Nafis Tahmid, Ahmed Rumi, and Anwarul Bashir Shuaib — for their outstanding mentorship, lectures, and continued encouragement throughout the CSE310: Compiler Design course.
-    The creators of Flex (Fast Lexical Analyzer Generator) — for providing an efficient tool to build our lexer with minimal hassle.
-    The ANTLR (Another Tool for Language Recognition) community — for making grammar-driven parsing intuitive, powerful, and accessible.
-    To all of my peers who offered feedback, testing support, and discussions during development.
-
-I'm sincerely grateful for your contributions to this learning journey.
+- Nafis Tahmid, Ahmed Rumi, and Anwarul Bashir Shuaib — for their outstanding mentorship, lectures, and continued encouragement throughout the CSE310: Compiler Design course.
+- The creators of Flex (Fast Lexical Analyzer Generator) — for providing an efficient tool to build our lexer with minimal hassle.
+- The ANTLR (Another Tool for Language Recognition) community — for making grammar-driven parsing intuitive, powerful, and accessible.
+- To all of my peers who offered feedback, testing support, and discussions during development.
+- I'm sincerely grateful for your contributions to this learning journey.
